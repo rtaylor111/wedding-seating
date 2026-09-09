@@ -1887,7 +1887,8 @@ document.addEventListener("pointerdown", e => {
   if (!gid) return;
   drag = {gid, pid:e.pointerId, ptype:e.pointerType,
     startX:e.clientX, startY:e.clientY, active:false, lpTimer:null,
-    fromDrawer: !!e.target.closest("#guestPanel")};
+    fromDrawer: !!e.target.closest("#guestPanel"),
+    fromZoom: !!e.target.closest("#zBody")};
   if (e.pointerType !== "mouse"){
     if (e.target.closest(".seat-hit")) liftDrag();       /* map: immediate */
     else drag.lpTimer = setTimeout(liftDrag, LP_MS);     /* lists: long-press */
@@ -1920,11 +1921,16 @@ document.addEventListener("pointermove", e => {
 });
 document.addEventListener("pointerup", e => {
   if (!drag || e.pointerId !== drag.pid) return;
-  const wasActive = drag.active, gid = drag.gid, ptype = drag.ptype;
+  const wasActive = drag.active, gid = drag.gid, ptype = drag.ptype,
+        fromZoom = drag.fromZoom;
   cancelDrag();
   if (!wasActive) return;
   let target = dropAt(e.clientX, e.clientY);
-  if (!target) return;
+  if (!target){
+    /* dragging a seated guest AWAY from the open table view unseats them */
+    if (fromZoom) opUnseat(gid);
+    return;
+  }
   /* plan seat dots are ~8px at fit on a phone: a touch drop on a dot is a
      TABLE drop (first free seat); seat precision lives in the table view */
   if (target.type === "seat" && target.el && target.el.tagName === "circle" &&
@@ -1970,7 +1976,8 @@ function dropAt(x, y){
 let lastCue = null, lastSeatCue = null;
 /* names the pending drop OUTSIDE the finger's shadow (review checklist 8) */
 function dropHintText(target){
-  if (!target) return "Drop on a table…";
+  if (!target) return (drag && drag.fromZoom)
+    ? "Release to unseat" : "Drop on a table…";
   if (target.type === "unseat") return "Drop: unseat";
   if (target.type === "table") return `Drop: ${tName(target.table)} · first free seat`;
   const touchDot = target.el && target.el.tagName === "circle" &&
@@ -2081,49 +2088,58 @@ function renderZoom(){
   }
   /* the table view IS the map's table, enlarged and orientation-true, with
      the names beside their seats (Ross's approved mockup) */
+  /* each seat is a BORDERED PILL (Ross: easier to see and grab) plus its dot
+     on the table edge; the pill is the hit target */
+  const clip = (s, n) => s.length > n ? s.slice(0, n-1) + "…" : s;
   const dotSvg = (i, cx, cy, opts) => {
     const gid = p.slots[i];
     const g = gid ? state.guests.get(gid) : null;
-    const fill = g ? (famColor(g.name) || C.gold) : "none";
-    const label = g ? esc(g.name) : `+ seat ${i+1}`;
+    const fam = g ? (famColor(g.name) || C.gold) : null;
     const attrs = `class="zdot${g ? " seat-hit" : " zempty"}" ` +
       `data-drop-seat="${t.id}:${i}"` +
       (g ? ` data-guest="${gid}"` : (editable ? ` data-pick="${t.id}:${i}"` : ""));
+    let pw, ph, px, py;
+    if (opts.anchor === "middle"){ pw = 104; ph = 32; px = opts.tx - pw/2; py = opts.ty - 22; }
+    else { pw = 172; ph = 38; py = cy - ph/2;
+      px = opts.anchor === "end" ? cx - 16 - pw : cx + 16; }
+    const pill = `<rect class="hit" x="${px}" y="${py}" width="${pw}" height="${ph}" rx="10" ` +
+      `fill="${g ? "#F6F6F4" : "#FFFFFF"}" stroke="${g ? fam : "#C9C8C0"}" ` +
+      `stroke-width="${g ? 2 : 1.5}"${g ? "" : ' stroke-dasharray="4 3"'} pointer-events="all"/>`;
     const dot = g
-      ? `<circle cx="${cx}" cy="${cy}" r="8" fill="${fill}" stroke="#fff" stroke-width="1.5"/>`
+      ? `<circle cx="${cx}" cy="${cy}" r="8" fill="${fam}" stroke="#fff" stroke-width="1.5" pointer-events="none"/>`
       : `<circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="#B9B8B0" ` +
-        `stroke-width="1.6" stroke-dasharray="3 2.5"/>`;
-    const text = `<text x="${opts.tx}" y="${opts.ty}" text-anchor="${opts.anchor}" ` +
+        `stroke-width="1.6" stroke-dasharray="3 2.5" pointer-events="none"/>`;
+    const label = g ? clip(g.name, opts.anchor === "middle" ? 12 : 17) : `+ seat ${i+1}`;
+    const tx = opts.anchor === "middle" ? px + pw/2 : (g ? px + 26 : px + pw/2);
+    const anchor = (opts.anchor === "middle" || !g) ? "middle" : "start";
+    const text = `<text x="${tx}" y="${py + ph/2 + 5}" text-anchor="${anchor}" ` +
       `font-size="14" font-weight="${g ? 700 : 500}" font-family="Karla,sans-serif" ` +
-      `fill="${g ? C.ink : "#9B9C93"}">${label}</text>`;
+      `fill="${g ? C.ink : "#9B9C93"}" pointer-events="none">${esc(label)}</text>`;
+    const grip = g && opts.anchor !== "middle"
+      ? `<text x="${px + 10}" y="${py + ph/2 + 5}" font-size="12" fill="${C.muted}" ` +
+        `font-family="Karla,sans-serif" pointer-events="none">&#8942;&#8942;</text>` : "";
     const leader = opts.leader
-      ? `<line x1="${cx}" y1="${cy+9}" x2="${opts.tx}" y2="${opts.ty-13}" stroke="#D8D7CF"/>` : "";
-    /* generous, explicitly hit-testable targets - a fingertip, not a dot */
-    const hit = opts.anchor === "middle"
-      ? `<rect class="hit" x="${cx-32}" y="${cy-14}" width="64" height="${opts.ty-cy+26}" rx="8" ` +
-        `fill="transparent" pointer-events="all"/>`
-      : `<rect class="hit" x="${opts.anchor === "end" ? opts.tx-160 : cx-14}" y="${cy-21}" ` +
-        `width="190" height="42" rx="8" fill="transparent" pointer-events="all"/>`;
-    return `<g ${attrs}>${hit}${leader}${dot}${text}</g>`;
+      ? `<line x1="${cx}" y1="${cy + 9}" x2="${px + pw/2}" y2="${py - 2}" stroke="#D8D7CF"/>` : "";
+    return `<g ${attrs}>${leader}${pill}${grip}${dot}${text}</g>`;
   };
   let svg;
   if (t.o === "v"){
     const L = Math.ceil(p.n/2), R = p.n - L;
     const H = Math.max(320, Math.max(L, R) * 58 + 60);
-    const rx = 125, rw = 90, ry = 24, rh = H - 48;
+    const rx = 185, rw = 90, ry = 24, rh = H - 48;
     const spread = (cnt, i) => cnt === 1 ? ry + rh/2 : ry + 32 + i * (rh - 64) / (cnt - 1);
     let inner = "";
     for (let i = 0; i < L; i++)
       inner += dotSvg(i, rx + 6, spread(L, i), {tx: rx - 14, ty: spread(L, i) + 5, anchor: "end"});
     for (let i = 0; i < R; i++)
       inner += dotSvg(L + i, rx + rw - 6, spread(R, i), {tx: rx + rw + 14, ty: spread(R, i) + 5, anchor: "start"});
-    svg = `<svg viewBox="0 0 340 ${H}" preserveAspectRatio="xMidYMid meet" data-drop="${t.id}">
-      <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
+    svg = `<svg viewBox="0 0 460 ${H}" preserveAspectRatio="xMidYMid meet">
+      <g data-drop="${t.id}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
         fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
       <text x="${rx+rw/2}" y="${ry+rh/2}" fill="${isFull ? "#fff" : C.bronze}" font-size="15"
         font-weight="600" font-family="Fraunces,Georgia,serif" text-anchor="middle"
         transform="rotate(-90 ${rx+rw/2} ${ry+rh/2})" letter-spacing="2"
-        pointer-events="none">${esc(tName(t.id).toUpperCase())} · ${n}/${p.n}</text>
+        pointer-events="none">${esc(tName(t.id).toUpperCase())} · ${n}/${p.n}</text></g>
       ${inner}</svg>`;
   } else {
     const rx = 20, rw = 300, ry = 36, rh = 100;
@@ -2133,15 +2149,15 @@ function renderZoom(){
       const ty = ry + rh + 46 + (i % 2) * 42;   /* staggered rows so names fit */
       inner += dotSvg(i, cx, ry + rh - 2, {tx: cx, ty, anchor: "middle", leader: true});
     }
-    svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet" data-drop="${t.id}">
-      <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
+    svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet">
+      <g data-drop="${t.id}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
         fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
       <text x="${rx+rw/2}" y="${ry+rh/2-6}" fill="${isFull ? "#fff" : C.bronze}" font-size="16"
         font-weight="600" font-family="Fraunces,Georgia,serif" text-anchor="middle"
         letter-spacing="2" pointer-events="none">${esc(tName(t.id).toUpperCase())}</text>
       <text x="${rx+rw/2}" y="${ry+rh/2+16}" fill="${isFull ? "#fff" : C.bronze}" font-size="13"
         font-weight="700" font-family="Karla,sans-serif" text-anchor="middle"
-        pointer-events="none">${n}/${p.n}</text>
+        pointer-events="none">${n}/${p.n}</text></g>
       ${inner}</svg>`;
   }
   const extras = p.extras.map(gid => {
