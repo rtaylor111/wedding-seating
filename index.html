@@ -224,6 +224,18 @@
     font-style:italic;cursor:default;border-left-width:1px;border-right-width:1px;}
   .zseat.dropcue .zpill{background:var(--gold-soft);border-color:var(--gold);border-style:solid;}
   .zhint{font-size:12px;color:var(--muted);margin:0;text-align:center;}
+  /* the table view IS the map's table, enlarged, names beside the seats */
+  .ztv{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:8px;padding:4px;}
+  .ztv svg{width:100%;height:100%;min-height:0;}
+  .zdot{cursor:grab;}
+  .zdot.zempty{cursor:pointer;}
+  .zdot.dropcue .hit{fill:var(--gold-soft);}
+  .zextras{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    font:700 12px Karla,sans-serif;color:var(--danger);}
+  .zextras .pill{display:inline-flex;align-items:center;gap:6px;background:var(--chip);
+    border:1px solid var(--line);border-radius:8px;padding:6px 9px;
+    font:700 12.5px Karla,sans-serif;color:var(--ink);cursor:grab;}
   .zlegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);
     justify-content:center;}
   .zlegend span{display:inline-flex;align-items:center;gap:5px;}
@@ -343,13 +355,12 @@
     .chips{flex:1;max-height:none;touch-action:pan-y;}
     .guests.dropcue #drawerBar .peekrow{color:var(--gold);}
 
-    /* table context: the zoom becomes a TALL bottom sheet over the visible map */
-    #zoomModal{background:none;pointer-events:none;align-items:flex-end;padding:0;}
-    #zoomModal .zpanel{pointer-events:auto;height:min(84dvh,var(--vvh,84dvh));
-      max-width:none;border-radius:16px 16px 0 0;
-      padding-bottom:calc(10px + env(safe-area-inset-bottom));}
+    /* table view: fills the map area; the drawer keeps peeking below it */
+    #zoomModal{background:none;pointer-events:none;align-items:stretch;padding:0;}
+    #zoomModal .zpanel{pointer-events:auto;height:auto;flex:1;max-width:none;
+      border-radius:0;padding-bottom:calc(78px + env(safe-area-inset-bottom));}
     #drawerBack{display:inline-flex;}
-    body[data-zoom="open"] .guests{display:none;}
+    .zhead .n{display:none;}   /* the big table graphic carries the count */
   }
   #menuSheet .panel{gap:8px;}
   .mitem{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);
@@ -487,7 +498,7 @@
 <div id="zoomModal">
   <div class="zpanel">
     <div class="zhead">
-      <button class="hbtn" id="drawerBack" title="Back to guests">&#8249; Guests</button>
+      <button class="hbtn" id="drawerBack" title="Back to the plan">&#8249; Plan</button>
       <button class="hbtn" id="zPrev" title="Previous table">&#8249;</button>
       <h2 id="zTitle"></h2>
       <button class="hbtn" id="zNext" title="Next table">&#8250;</button>
@@ -1904,10 +1915,12 @@ function highlightDrop(target){
     if (target.el.tagName === "circle"){
       target.el.setAttribute("stroke", C.danger);
       target.el.setAttribute("stroke-width","2");
-    } else target.el.closest(".zseat") ? target.el.closest(".zseat").classList.add("dropcue")
-         : target.el.classList.add("dropcue");
+    } else {
+      const holder = target.el.closest(".zseat,.zdot") || target.el;
+      holder.classList.add("dropcue");
+    }
     lastSeatCue = target.el.tagName === "circle" ? target.el
-      : (target.el.closest(".zseat") || target.el);
+      : (target.el.closest(".zseat,.zdot") || target.el);
   }
 }
 
@@ -1922,7 +1935,8 @@ function openZoom(tid){
   const wasOpen = !!zoomTable;
   zoomTable = tid;
   if (!wasOpen) drawerBefore = getDrawer();
-  document.body.dataset.zoom = "open";     /* hides the guest drawer on mobile */
+  if (isMobile()) setDrawer("peek");       /* drawer stays visible under the table view */
+  document.body.dataset.zoom = "open";
   $("zoomModal").style.display = "flex";
   renderZoom();
   renderPlan();                            /* draw the selected-table highlight */
@@ -1972,47 +1986,78 @@ function renderZoom(){
     $("zLegend").style.display = "none";
     $("zLegend").innerHTML = "";
   }
-  const helm = HELMETS[seatIcon];
-  const seatHtml = (i, side) => {
+  /* the table view IS the map's table, enlarged and orientation-true, with
+     the names beside their seats (Ross's approved mockup) */
+  const dotSvg = (i, cx, cy, opts) => {
     const gid = p.slots[i];
-    if (!gid) return `<div class="zseat empty${side}" data-drop-seat="${t.id}:${i}"` +
-      ` data-pick="${t.id}:${i}" title="Tap to seat a guest here">` +
-      `<span class="zhelm">${helm}</span>` +
-      `<span class="zpill"><span class="nm">Empty${editable ? " - tap to seat" : ""}</span>` +
-      `<span class="no">${i+1}</span></span></div>`;
+    const g = gid ? state.guests.get(gid) : null;
+    const fill = g ? (famColor(g.name) || C.gold) : "none";
+    const label = g ? esc(g.name) : `+ seat ${i+1}`;
+    const attrs = `class="zdot${g ? " seat-hit" : " zempty"}" ` +
+      `data-drop-seat="${t.id}:${i}"` +
+      (g ? ` data-guest="${gid}"` : (editable ? ` data-pick="${t.id}:${i}"` : ""));
+    const dot = g
+      ? `<circle cx="${cx}" cy="${cy}" r="8" fill="${fill}" stroke="#fff" stroke-width="1.5"/>`
+      : `<circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="#B9B8B0" ` +
+        `stroke-width="1.6" stroke-dasharray="3 2.5"/>`;
+    const text = `<text x="${opts.tx}" y="${opts.ty}" text-anchor="${opts.anchor}" ` +
+      `font-size="14" font-weight="${g ? 700 : 500}" font-family="Karla,sans-serif" ` +
+      `fill="${g ? C.ink : "#9B9C93"}">${label}</text>`;
+    const leader = opts.leader
+      ? `<line x1="${cx}" y1="${cy+9}" x2="${opts.tx}" y2="${opts.ty-13}" stroke="#D8D7CF"/>` : "";
+    const hit = opts.anchor === "middle"
+      ? `<rect class="hit" x="${cx-26}" y="${cy-12}" width="52" height="${opts.ty-cy+22}" rx="8" fill="transparent"/>`
+      : `<rect class="hit" x="${opts.anchor === "end" ? opts.tx-150 : cx-12}" y="${cy-17}" ` +
+        `width="176" height="34" rx="8" fill="transparent"/>`;
+    return `<g ${attrs}>${hit}${leader}${dot}${text}</g>`;
+  };
+  let svg;
+  if (t.o === "v"){
+    const L = Math.ceil(p.n/2), R = p.n - L;
+    const H = Math.max(320, Math.max(L, R) * 58 + 60);
+    const rx = 125, rw = 90, ry = 24, rh = H - 48;
+    const spread = (cnt, i) => cnt === 1 ? ry + rh/2 : ry + 32 + i * (rh - 64) / (cnt - 1);
+    let inner = "";
+    for (let i = 0; i < L; i++)
+      inner += dotSvg(i, rx + 6, spread(L, i), {tx: rx - 14, ty: spread(L, i) + 5, anchor: "end"});
+    for (let i = 0; i < R; i++)
+      inner += dotSvg(L + i, rx + rw - 6, spread(R, i), {tx: rx + rw + 14, ty: spread(R, i) + 5, anchor: "start"});
+    svg = `<svg viewBox="0 0 340 ${H}" preserveAspectRatio="xMidYMid meet">
+      <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
+        fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
+      <text x="${rx+rw/2}" y="${ry+rh/2}" fill="${isFull ? "#fff" : C.bronze}" font-size="15"
+        font-weight="600" font-family="Fraunces,Georgia,serif" text-anchor="middle"
+        transform="rotate(-90 ${rx+rw/2} ${ry+rh/2})" letter-spacing="2"
+        pointer-events="none">${esc(tName(t.id).toUpperCase())} · ${n}/${p.n}</text>
+      ${inner}</svg>`;
+  } else {
+    const rx = 20, rw = 300, ry = 36, rh = 100;
+    let inner = "";
+    for (let i = 0; i < p.n; i++){
+      const cx = p.n === 1 ? rx + rw/2 : rx + 26 + i * (rw - 52) / (p.n - 1);
+      const ty = ry + rh + 46 + (i % 2) * 42;   /* staggered rows so names fit */
+      inner += dotSvg(i, cx, ry + rh - 2, {tx: cx, ty, anchor: "middle", leader: true});
+    }
+    svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet">
+      <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
+        fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
+      <text x="${rx+rw/2}" y="${ry+rh/2-6}" fill="${isFull ? "#fff" : C.bronze}" font-size="16"
+        font-weight="600" font-family="Fraunces,Georgia,serif" text-anchor="middle"
+        letter-spacing="2" pointer-events="none">${esc(tName(t.id).toUpperCase())}</text>
+      <text x="${rx+rw/2}" y="${ry+rh/2+16}" fill="${isFull ? "#fff" : C.bronze}" font-size="13"
+        font-weight="700" font-family="Karla,sans-serif" text-anchor="middle"
+        pointer-events="none">${n}/${p.n}</text>
+      ${inner}</svg>`;
+  }
+  const extras = p.extras.map(gid => {
     const g = state.guests.get(gid);
     const c = famColor(g.name);
-    return `<div class="zseat${side}" data-drop-seat="${t.id}:${i}" data-guest="${gid}"` +
-      `${c ? ` style="--fc:${c}"` : ""}>` +
-      `<span class="zhelm">${helm}</span>` +
-      `<span class="zpill"><span class="grip">&#8942;&#8942;</span>` +
-      `<span class="nm">${esc(g.name)}</span><span class="no">${i+1}</span>` +
-      `<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></span></div>`;
-  };
-  const strip = `<div class="ztable${isFull?" zfull":""}"><b>${esc(tName(t.id))}</b>` +
-    `<span>${n}/${p.n}</span></div>`;
-  let body;
-  if (t.o === "v"){
-    const L = Math.ceil(p.n/2), left = [], right = [];
-    for (let i=0;i<L;i++) left.push(seatHtml(i, ""));
-    for (let i=L;i<p.n;i++) right.push(seatHtml(i, " r"));
-    body = `<div class="zside">${left.join("")}</div>${strip}` +
-      `<div class="zside">${right.join("")}</div>`;
-  } else {
-    const rows = [];
-    for (let i=0;i<p.n;i++) rows.push(seatHtml(i, " r"));
-    body = `${strip}<div class="zside">${rows.join("")}</div>`;
-  }
-  if (p.extras.length){
-    body += `<div class="zside" style="flex:0 0 170px">` + p.extras.map(gid => {
-      const g = state.guests.get(gid);
-      return `<div class="zseat" data-guest="${gid}"><span class="zhelm">${helm}</span>` +
-        `<span class="zpill"><span class="grip">&#8942;&#8942;</span>` +
-        `<span class="nm">${esc(g.name)}</span><span class="no" style="color:var(--danger)">!</span>` +
-        `<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></span></div>`;
-    }).join("") + `</div>`;
-  }
-  $("zBody").innerHTML = body;
+    return `<span class="pill" data-guest="${gid}">` +
+      (c ? `<span class="fam" style="background:${c}"></span>` : "") +
+      `${esc(g.name)}<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></span>`;
+  }).join("");
+  $("zBody").innerHTML = `<div class="ztv">${svg}` +
+    `${extras ? `<div class="zextras">over capacity: ${extras}</div>` : ""}</div>`;
 }
 $("zPrev").onclick = () => zoomStep(-1);
 $("zNext").onclick = () => zoomStep(1);
