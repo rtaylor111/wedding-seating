@@ -78,7 +78,7 @@
     border:1px solid var(--line);border-radius:8px;padding:5px 8px;cursor:grab;
     font-size:14px;user-select:none;-webkit-user-select:none;}
   .grip{color:var(--muted);letter-spacing:1.5px;font-size:12px;cursor:grab;
-    touch-action:none;padding:5px 6px;flex:0 0 auto;}
+    padding:5px 6px;flex:0 0 auto;}   /* long-press lifts; swipes scroll (pan-y) */
   .chip .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;
     padding:0 2px;line-height:1;}
@@ -274,39 +274,90 @@
   body.readonly .tname:hover{border-bottom-color:transparent;}
   body.readonly #pinBtn{display:inline-block;}
 
-  /* ---- mobile app mode: bottom tabs, one full-height view at a time ---- */
-  #mnav{display:none;flex:0 0 auto;border-top:1px solid var(--line);background:#fff;
-    padding-bottom:env(safe-area-inset-bottom);}
-  #mnav button{flex:1;border:0;background:none;padding:11px 4px;cursor:pointer;
-    font:700 13px Karla,sans-serif;color:var(--muted);}
-  #mnav button.on{color:var(--gold);}
   body:not(.readonly) .zseat.empty{cursor:pointer;}
   body:not(.readonly) .zseat.empty .zpill{cursor:pointer;}
   .pickrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
     background:var(--chip);border:1px solid var(--line);border-radius:8px;
     padding:10px 12px;font:700 14px Karla,sans-serif;color:var(--ink);cursor:pointer;}
   .pickrow:hover{border-color:var(--gold);background:var(--gold-soft);}
+  .pickhead{font:700 11px Karla,sans-serif;color:var(--muted);letter-spacing:.08em;
+    margin:4px 0 0;}
+  .pickrow .loc{margin-left:auto;}
+
+  /* long-press drag sources: suppress the platform's own long-press UI */
+  .chip,.rrow,.zpill,.seat-hit,.grip{-webkit-touch-callout:none;}
+
+  /* pending-drop banner: names the target OUTSIDE the finger's shadow */
+  #dropHint{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;
+    display:none;background:var(--ink);color:#fff;border-radius:9px;padding:6px 14px;
+    font:700 13px Karla,sans-serif;box-shadow:0 6px 18px rgba(35,37,43,.3);
+    max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  /* ---- mobile: map-first with a bottom drawer (direction 1, reviewed design) ---- */
+  #menuBtn,#drawerBar,#rosterClose,#drawerBack{display:none;}
+  #rosterTop{display:flex;align-items:center;gap:8px;}
+  #rosterTop h2{flex:1;}
+  @media (max-width:820px){ #rosterClose{display:inline-flex;} }
   @media (max-width:820px){
     body{height:100vh;}
     @supports (height:100dvh){ body{height:100dvh;} }
-    header{padding:8px 10px;gap:6px 8px;}
-    header h1{font-size:16px;}
-    .counts{flex-basis:100%;order:5;font-size:11.5px;}
-    .hdr-right{margin-left:0;flex:1 1 100%;overflow-x:auto;flex-wrap:nowrap;
-      scrollbar-width:none;}
-    .app{flex-direction:column;}
-    .guests, .roster, main{display:none;}
-    body[data-mview="plan"] main{display:flex;padding:6px;flex:1;min-height:0;}
-    body[data-mview="guests"] .guests{display:flex;width:auto;flex:1;min-height:0;
-      border:0;overflow:hidden;}
-    body[data-mview="roster"] .roster{display:flex;width:auto;flex:1;min-height:0;
-      border:0;overflow-y:auto;}
-    .chips{flex:1;max-height:none;}
-    #mnav{display:flex;}
+    header{padding:6px 10px;gap:6px;}
+    header h1{font-size:15px;}
+    .counts{display:none;}
+    .hdr-right{margin-left:auto;flex-wrap:nowrap;overflow:hidden;gap:6px;}
+    #iconPick,#famBtn,#verBtn,#resetBtn,#btnXlsx,#btnPdf{display:none !important;}
+    #menuBtn{display:inline-flex;}
+    .savestate{font-size:10.5px;white-space:nowrap;}
+
+    /* the map's layout box NEVER changes with drawer state (review B1) */
+    .app{flex-direction:column;position:relative;}
+    main{flex:1;min-height:0;padding:6px;display:flex;}
+    .planwrap{padding:4px;}
+    .roster{display:none;}
+    body[data-roster="open"] .roster{display:flex;position:fixed;inset:0;z-index:44;
+      width:auto;border:0;background:#fff;}
+
+    /* drawer = the guests panel as a FIXED OVERLAY (never resizes the map) */
+    .guests{position:fixed;left:0;right:0;bottom:0;z-index:36;width:auto;
+      border:0;border-top:1.5px solid var(--line);border-radius:16px 16px 0 0;
+      box-shadow:0 -8px 24px rgba(35,37,43,.16);background:#fff;
+      height:var(--drawerH,64px);transition:height .22s ease;overflow:hidden;
+      padding:0 14px calc(10px + env(safe-area-inset-bottom));}
+    body[data-drawer="peek"] .guests{--drawerH:64px;}
+    body[data-drawer="half"] .guests{--drawerH:52dvh;}
+    body[data-drawer="tall"] .guests{--drawerH:min(84dvh,var(--vvh,84dvh));}
+    #drawerBar{display:block;flex:0 0 auto;padding:7px 0 4px;cursor:grab;
+      touch-action:none;}
+    #drawerBar .grab{width:40px;height:4.5px;border-radius:3px;background:var(--line);
+      margin:0 auto 6px;}
+    #drawerBar .peekrow{display:flex;align-items:center;gap:8px;font:700 13px Karla,sans-serif;}
+    #drawerBar .peekrow .n{color:var(--muted);font-size:11.5px;margin-left:auto;}
+    #peekPills{display:flex;gap:6px;overflow-x:auto;touch-action:pan-x;
+      scrollbar-width:none;padding:5px 0 2px;}
+    #peekPills .chip{flex:0 0 auto;}
+    body:not([data-drawer="peek"]) #peekPills{display:none;}
+    body[data-drawer="peek"] .guests > :not(#drawerBar){display:none !important;}
+    .guests h2, #importTabs, #tab-paste, #tab-xlsx, #tab-type{display:none;}
+    .chips{flex:1;max-height:none;touch-action:pan-y;}
+    .guests.dropcue #drawerBar .peekrow{color:var(--gold);}
+
+    /* table context: the zoom becomes a TALL bottom sheet over the visible map */
+    #zoomModal{background:none;pointer-events:none;align-items:flex-end;padding:0;}
+    #zoomModal .zpanel{pointer-events:auto;height:min(84dvh,var(--vvh,84dvh));
+      max-width:none;border-radius:16px 16px 0 0;
+      padding-bottom:calc(10px + env(safe-area-inset-bottom));}
+    #drawerBack{display:inline-flex;}
+    body[data-zoom="open"] .guests{display:none;}
   }
+  #menuSheet .panel{gap:8px;}
+  .mitem{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);
+    background:#fff;border-radius:9px;padding:11px 13px;font:700 14px Karla,sans-serif;
+    color:var(--ink);cursor:pointer;text-align:left;}
+  .mitem:hover{border-color:var(--gold);background:var(--gold-soft);}
+  body.readonly .editonly{display:none;}
 </style>
 </head>
-<body data-mview="plan">
+<body data-drawer="peek">
 
 <header>
   <h1>Wedding Seating Planner</h1>
@@ -325,11 +376,18 @@
     <span class="savestate" id="savestate" aria-live="polite">Connecting&hellip;</span>
     <button class="hbtn" id="btnXlsx" style="font-size:13px">Export Excel</button>
     <button class="hbtn" id="btnPdf" style="font-size:13px">Export PDF</button>
+    <button class="hbtn" id="menuBtn" title="Menu">&#8942;</button>
   </div>
 </header>
 
 <div class="app">
   <aside class="guests" id="guestPanel" data-drop="unseat">
+    <div id="drawerBar">
+      <div class="grab"></div>
+      <div class="peekrow"><span id="peekLabel">Unseated</span>
+        <span class="n" id="peekHint">swipe up &middot; drop here to unseat</span></div>
+      <div id="peekPills"></div>
+    </div>
     <h2>Guests</h2>
     <div class="imports" id="importTabs">
       <button data-tab="paste" class="on">Paste</button>
@@ -359,6 +417,7 @@
       <div class="imports" id="listTabs">
         <button data-view="all" class="on">All</button>
         <button data-view="unseated">Unseated</button>
+        <button data-view="seated">Seated</button>
       </div>
     </div>
     <div class="chips" id="chips"></div>
@@ -376,7 +435,8 @@
   </main>
 
   <aside class="roster">
-    <h2>Roster</h2>
+    <div id="rosterTop"><h2>Roster</h2>
+      <button class="hbtn" id="rosterClose" title="Close">&times;</button></div>
     <div class="allseats" title="Set the seat count of all 14 guest tables at once">
       All guest tables:
       <button data-allminus title="One seat fewer everywhere">&minus;</button>
@@ -425,6 +485,7 @@
 <div id="zoomModal">
   <div class="zpanel">
     <div class="zhead">
+      <button class="hbtn" id="drawerBack" title="Back to guests">&#8249; Guests</button>
       <button class="hbtn" id="zPrev" title="Previous table">&#8249;</button>
       <h2 id="zTitle"></h2>
       <button class="hbtn" id="zNext" title="Next table">&#8250;</button>
@@ -458,11 +519,33 @@
   </div>
 </div>
 
-<nav id="mnav">
-  <button data-mtab="plan" class="on">Plan</button>
-  <button data-mtab="guests">Guests</button>
-  <button data-mtab="roster">Roster</button>
-</nav>
+<div id="dropHint"></div>
+
+<div class="modal" id="menuSheet">
+  <div class="panel">
+    <div class="mrow"><h2 style="flex:1">Menu</h2>
+      <button class="hbtn mclose" id="menuClose">&times;</button></div>
+    <div class="editonly" style="display:flex;align-items:center;gap:10px">
+      <span style="font:700 13px Karla,sans-serif">Helmet</span>
+      <span class="iconpick iconpick-m"></span>
+    </div>
+    <button class="mitem editonly" data-menu="fams">Family colours</button>
+    <button class="mitem editonly" data-menu="addguests">Add guests</button>
+    <button class="mitem" data-menu="roster">Roster</button>
+    <button class="mitem editonly" data-menu="versions">Versions</button>
+    <button class="mitem editonly" data-menu="reset">Reset seating</button>
+    <button class="mitem" data-menu="xlsx">Export Excel</button>
+    <button class="mitem" data-menu="pdf">Export PDF</button>
+  </div>
+</div>
+
+<div class="modal" id="importSheet">
+  <div class="panel">
+    <div class="mrow"><h2 style="flex:1">Add guests</h2>
+      <button class="hbtn mclose" id="importClose">&times;</button></div>
+    <div id="importDock"></div>
+  </div>
+</div>
 
 <div class="modal" id="pickModal">
   <div class="panel">
@@ -497,6 +580,8 @@ const EXEC = "https://script.google.com/macros/s/AKfycbyp5-k171DQ5kP4dj9Tp3a69vP
 const SANDBOX = new URLSearchParams(location.search).has("sandbox");
 const DB = SANDBOX ? "test" : "";
 const LS_PIN = SANDBOX ? "wsEditPinTest" : "wsEditPin";
+const mobileMQ = matchMedia("(max-width:820px)");
+const isMobile = () => mobileMQ.matches;
 if (SANDBOX){
   document.title = "TEST - Wedding Seating Planner";
   document.body.insertAdjacentHTML("afterbegin",
@@ -920,7 +1005,10 @@ document.addEventListener("keydown", e => {
   if (e.target.closest("input,textarea")) return;   /* Esc in a rename cancels the rename only */
   if (e.key === "Escape"){ closeZoom(); $("verModal").style.display = "none";
     $("pinModal").style.display = "none";
-    $("pickModal").style.display = "none"; pickTarget = null; return; }
+    $("pickModal").style.display = "none"; pickTarget = null;
+    $("menuSheet").style.display = "none";
+    $("importSheet").style.display = "none";
+    delete document.body.dataset.roster; return; }
   if (!editable) return;
   if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
   else if ((e.ctrlKey||e.metaKey) && (e.key.toLowerCase() === "y" ||
@@ -1198,9 +1286,11 @@ function renderPlan(){
     const isFull = n >= p.n;
     const g = el("g",{cursor:"pointer"});
     g.dataset.drop = t.id;
+    const selected = zoomTable === t.id;   /* survives re-renders: drawn from state */
     g.appendChild(el("rect",{x:t.x,y:t.y,width:t.w,height:t.h,rx:6,
       fill:isFull?C.bronze:(n>0?C.goldSoft:"#FFFFFF"),
-      stroke:isFull?C.bronze:C.line,"stroke-width":1.5,class:"trect"}));
+      stroke:selected?C.gold:(isFull?C.bronze:C.line),
+      "stroke-width":selected?3:1.5,class:"trect"}));
     const pts = seatPoints(t, p.n);
     pts.forEach(([cx,cy], i) => {
       const gid = p.slots[i];
@@ -1244,13 +1334,16 @@ function renderPlan(){
     }
     g.addEventListener("click", e => {
       if (Date.now() < suppressClickUntil) return;     /* a pan or drag just ended */
-      if (e.target.dataset && e.target.dataset.name){
-        showTipFor(e.target);                          /* seat tap = the guest's card */
+      /* fine pointers get the seat card on a dot; on touch, dots are ~8px, so
+         ANY tap on the table opens its view (review S6) */
+      if (!matchMedia("(hover: none)").matches &&
+          e.target.dataset && e.target.dataset.name){
+        showTipFor(e.target);
         clearTimeout(tipTimer);
         tipTimer = setTimeout(hideTip, 2500);
         return;
       }
-      openZoom(t.id);                                  /* table tap = the zoom */
+      openZoom(t.id);
     });
     svg.appendChild(g);
   }
@@ -1266,26 +1359,57 @@ let suppressClickUntil = 0;   /* set when a pan or drag ends, so the click that
 function applyView(){
   $("plan").setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
 }
+/* the viewBox always matches the element's aspect, so the browser never
+   re-centres content itself - what we set is exactly what renders */
+function boxAspect(){
+  const r = $("plan").getBoundingClientRect();
+  return r.width > 0 ? r.height / r.width : VIEW0.h / VIEW0.w;
+}
+let MAXW = VIEW0.w;
 function clampView(){
-  view.w = Math.max(160, Math.min(VIEW0.w, view.w));
-  view.h = view.w * (VIEW0.h/VIEW0.w);
-  view.x = Math.max(VIEW0.x - 40, Math.min(VIEW0.x + VIEW0.w + 40 - view.w, view.x));
-  view.y = Math.max(VIEW0.y - 40, Math.min(VIEW0.y + VIEW0.h + 40 - view.h, view.y));
+  view.w = Math.max(160, Math.min(MAXW, view.w));
+  view.h = view.w * boxAspect();
+  const minX = VIEW0.x - 40, maxX = VIEW0.x + VIEW0.w + 40 - view.w;
+  view.x = maxX < minX ? VIEW0.x - (view.w - VIEW0.w)/2
+    : Math.max(minX, Math.min(maxX, view.x));
+  const minY = VIEW0.y - 40, maxY = VIEW0.y + VIEW0.h + 40 - view.h;
+  view.y = maxY < minY ? VIEW0.y : Math.max(minY, Math.min(maxY, view.y));
+}
+/* fit = whole plan visible in the part of the map the drawer doesn't cover */
+function drawerInsetPx(){
+  if (!isMobile()) return 0;
+  const g = $("guestPanel");
+  const r = g ? g.getBoundingClientRect() : null;
+  return r ? Math.min(r.height, innerHeight * 0.7) : 0;
+}
+function fitView(){
+  const r = $("plan").getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const availH = Math.max(80, r.height - drawerInsetPx());
+  const s = Math.min(r.width / VIEW0.w, availH / VIEW0.h);
+  const w = r.width / s, h = r.height / s;
+  MAXW = Math.max(VIEW0.w, w);
+  view = {x: VIEW0.x - (w - VIEW0.w)/2, y: VIEW0.y, w, h};
+  applyView();
 }
 function zoomAt(cx, cy, factor){
   const r = $("plan").getBoundingClientRect();
   const sx = view.x + (cx - r.left)/r.width * view.w;
   const sy = view.y + (cy - r.top)/r.height * view.h;
-  const w = Math.max(160, Math.min(VIEW0.w, view.w * factor));
+  const w = Math.max(160, Math.min(MAXW, view.w * factor));
   const f = w / view.w;
   view = {x: sx - (sx - view.x)*f, y: sy - (sy - view.y)*f, w, h: view.h*f};
   clampView(); applyView();
 }
+addEventListener("resize", () => {   /* keep aspect true; don't reset the zoom */
+  view.h = view.w * boxAspect();
+  clampView(); applyView();
+});
 $("mapIn").onclick = () => { const r = $("plan").getBoundingClientRect();
   zoomAt(r.left + r.width/2, r.top + r.height/2, 0.72); };
 $("mapOut").onclick = () => { const r = $("plan").getBoundingClientRect();
   zoomAt(r.left + r.width/2, r.top + r.height/2, 1.39); };
-$("mapFit").onclick = () => { view = {...VIEW0}; applyView(); };
+$("mapFit").onclick = () => fitView();
 $("plan").addEventListener("wheel", e => {
   e.preventDefault();
   zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 1.15 : 0.87);
@@ -1305,7 +1429,8 @@ $("plan").addEventListener("pointerdown", e => {
 });
 document.addEventListener("pointermove", e => {
   const pt = panPts.get(e.pointerId);
-  if (!pt || (drag && drag.active)) return;
+  if (!pt) return;
+  if (drag && drag.active){ pt.x = e.clientX; pt.y = e.clientY; return; }
   const r = $("plan").getBoundingClientRect();
   if (panPts.size === 2){
     const [a, b] = [...panPts.values()];
@@ -1333,7 +1458,7 @@ const endPan = e => {
 };
 document.addEventListener("pointerup", endPan);
 document.addEventListener("pointercancel", endPan);
-applyView();
+fitView();
 
 let guestView = "all";
 $("listTabs").addEventListener("click", e => {
@@ -1353,10 +1478,24 @@ function renderChips(){
   }
   let list = [...state.guests.entries()];
   if (guestView === "unseated") list = list.filter(([,g]) => !g.table);
+  if (guestView === "seated") list = list.filter(([,g]) => !!g.table);
   list.sort((a,b) => (!!a[1].table - !!b[1].table) || a[1].name.localeCompare(b[1].name));
   if (q) list = list.filter(([,g]) => g.name.toLowerCase().includes(q));
   $("listHdr").textContent = `Guest list (${state.guests.size})`;
-  $("listTabs").children[1].textContent = `Unseated (${unseated().length})`;
+  const unN = unseated().length;
+  $("listTabs").querySelector('[data-view="unseated"]').textContent = `Unseated (${unN})`;
+  $("listTabs").querySelector('[data-view="seated"]').textContent =
+    `Seated (${state.guests.size - unN})`;
+  /* the PEEK bar mirrors the ACTIVE filter, never a stale label (review S7) */
+  $("peekLabel").textContent =
+    guestView === "seated" ? `Seated (${state.guests.size - unN})` :
+    guestView === "all" ? `Guests (${state.guests.size})` : `Unseated (${unN})`;
+  $("peekPills").innerHTML = list.slice(0, 10).map(([id,g]) => {
+    const c = famColor(g.name);
+    return `<div class="chip" data-guest="${id}"` +
+      `${c ? ` style="border-left:4px solid ${c}"` : ""}>` +
+      `<span class="nm">${esc(g.name)}</span></div>`;
+  }).join("") || `<span class="emptymsg">nobody here</span>`;
   $("chips").innerHTML = list.length
     ? list.map(([id,g]) => {
         const c = famColor(g.name);
@@ -1456,24 +1595,49 @@ function openPicker(tableId, seatIdx){
 }
 function renderPickList(){
   const q = $("pickSearch").value.trim().toLowerCase();
-  const list = unseated().filter(([,g]) => !q || g.name.toLowerCase().includes(q));
-  $("pickList").innerHTML = list.length
-    ? ""
-    : `<p class="emptymsg">${state.guests.size
-        ? "Nobody is unseated - drag someone from another table instead."
-        : "No guests on the list yet."}</p>`;
-  for (const [gid, g] of list){
+  const match = ([,g]) => !q || g.name.toLowerCase().includes(q);
+  const un = unseated().filter(match);
+  /* seated guests are pickable too - moving between tables is tap-only
+     (review B2); picking a seated guest moves them to the target seat */
+  const seatLoc = new Map();
+  for (const t of TABLES){
+    const p = placement(t.id);
+    p.slots.forEach((gid,i) => { if (gid) seatLoc.set(gid, `${tName(t.id)} · ${i+1}`); });
+    for (const gid of p.extras) seatLoc.set(gid, `${tName(t.id)} · !`);
+  }
+  const seated = [...state.guests.entries()]
+    .filter(([gid,g]) => g.table && match([gid,g]) &&
+      !(pickTarget && g.table === pickTarget.tableId &&
+        g.seat === pickTarget.seatIdx))
+    .sort((a,b) => a[1].name.localeCompare(b[1].name));
+  const box = $("pickList");
+  box.innerHTML = "";
+  const addRow = (gid, g, locTxt) => {
     const b = document.createElement("button");
     b.className = "pickrow";
     const c = famColor(g.name);
     b.innerHTML = (c ? `<span class="fam" style="background:${c}"></span>` : "") +
-      `<span>${esc(g.name)}</span>`;
+      `<span>${esc(g.name)}</span>` +
+      (locTxt ? `<span class="loc">${esc(locTxt)}</span>` : "");
     b.onclick = () => {
       $("pickModal").style.display = "none";
       if (pickTarget) opSeatAt(gid, pickTarget.tableId, pickTarget.seatIdx);
       pickTarget = null;
     };
-    $("pickList").appendChild(b);
+    box.appendChild(b);
+  };
+  if (!un.length && !seated.length){
+    box.innerHTML = `<p class="emptymsg">${state.guests.size
+      ? "No matching guests." : "No guests on the list yet."}</p>`;
+    return;
+  }
+  if (un.length){
+    box.insertAdjacentHTML("beforeend", `<p class="pickhead">UNSEATED</p>`);
+    for (const [gid,g] of un) addRow(gid, g, "");
+  }
+  if (seated.length){
+    box.insertAdjacentHTML("beforeend", `<p class="pickhead">SEATED - picking moves them</p>`);
+    for (const [gid,g] of seated) addRow(gid, g, seatLoc.get(gid) || "");
   }
 }
 $("pickSearch").addEventListener("input", renderPickList);
@@ -1482,13 +1646,74 @@ $("pickModal").addEventListener("click", e => {
   if (e.target === $("pickModal")){ $("pickModal").style.display = "none"; pickTarget = null; }
 });
 
-/* mobile bottom tabs */
-$("mnav").addEventListener("click", e => {
-  const b = e.target.closest("[data-mtab]");
-  if (!b) return;
-  document.body.dataset.mview = b.dataset.mtab;
-  for (const x of $("mnav").children) x.classList.toggle("on", x === b);
+/* ============ mobile: drawer, menu, import sheet, roster sheet ============ */
+const DRAWER_STATES = ["peek","half","tall"];
+function setDrawer(s){ document.body.dataset.drawer = s; }
+const getDrawer = () => document.body.dataset.drawer || "peek";
+
+/* imports live in the drawer on desktop, in their own sheet on mobile
+   (a bottom drawer is exactly where the phone keyboard lands) */
+function dockImports(){
+  const nodes = [$("importTabs"), $("tab-paste"), $("tab-xlsx"), $("tab-type")];
+  if (isMobile()) nodes.forEach(n => $("importDock").appendChild(n));
+  else {
+    const anchor = $("search");
+    nodes.forEach(n => $("guestPanel").insertBefore(n, anchor));
+  }
+}
+mobileMQ.addEventListener("change", () => { dockImports(); fitView(); });
+dockImports();
+
+/* drawer grab-handle: tap toggles, swipe snaps through peek/half/tall */
+let dbar = null;
+$("drawerBar").addEventListener("pointerdown", e => {
+  dbar = {y: e.clientY, pid: e.pointerId};
 });
+$("drawerBar").addEventListener("pointerup", e => {
+  if (!dbar || e.pointerId !== dbar.pid){ dbar = null; return; }
+  const dy = e.clientY - dbar.y;
+  dbar = null;
+  const idx = DRAWER_STATES.indexOf(getDrawer());
+  if (Math.abs(dy) < 12){ setDrawer(idx === 0 ? "half" : "peek"); return; }
+  const step = dy < -140 ? 2 : dy < 0 ? 1 : dy > 140 ? -2 : -1;
+  setDrawer(DRAWER_STATES[Math.max(0, Math.min(2, idx + step))]);
+});
+$("drawerBar").addEventListener("pointercancel", () => { dbar = null; });
+$("search").addEventListener("focus", () => { if (isMobile()) setDrawer("tall"); });
+if (window.visualViewport){
+  visualViewport.addEventListener("resize", () =>
+    document.documentElement.style.setProperty("--vvh", visualViewport.height + "px"));
+}
+
+/* named actions so the mobile menu can share the header buttons' handlers */
+function resetFlow(){
+  if (!editable) return;
+  const seatedN = [...state.guests.values()].filter(g => g.table).length;
+  if (!seatedN){ toast("Nobody is seated - nothing to reset."); return; }
+  toast(`Return all ${seatedN} seated guests to the unassigned list?`,
+    "Yes, reset seating", doReset);
+}
+$("menuBtn").onclick = () => { $("menuSheet").style.display = "flex"; };
+$("menuClose").onclick = () => $("menuSheet").style.display = "none";
+$("menuSheet").addEventListener("click", e => {
+  if (e.target === $("menuSheet")){ $("menuSheet").style.display = "none"; return; }
+  const it = e.target.closest("[data-menu]");
+  if (!it) return;
+  $("menuSheet").style.display = "none";
+  const act = it.dataset.menu;
+  if (act === "fams" && editable) opToggleFams();
+  else if (act === "addguests" && editable) $("importSheet").style.display = "flex";
+  else if (act === "roster") document.body.dataset.roster = "open";
+  else if (act === "versions" && editable) openVersions();
+  else if (act === "reset") resetFlow();
+  else if (act === "xlsx") exportXlsx();
+  else if (act === "pdf") exportPdf();
+});
+$("importClose").onclick = () => $("importSheet").style.display = "none";
+$("importSheet").addEventListener("click", e => {
+  if (e.target === $("importSheet")) $("importSheet").style.display = "none";
+});
+$("rosterClose").onclick = () => { delete document.body.dataset.roster; };
 function startRename(span){
   const tableId = span.dataset.rename;
   const input = document.createElement("input");
@@ -1510,31 +1735,70 @@ function startRename(span){
   input.addEventListener("blur", () => finish(true));
 }
 
-/* ============ drag and drop (pointer events) ============ */
+/* ============ drag and drop (pointer events, touch-first) ============
+   Mouse: whole-pill drag after a 7px move. Touch: LONG-PRESS (300ms, held
+   still) lifts the whole pill - a quick swipe scrolls the list natively.
+   Map seat dots lift immediately on touch (the map has no native scroll). */
 let drag = null;
+const LP_MS = 300, LP_SLOP = 10;
+/* registered at LOAD, non-passive: the browser keeps touchmoves cancelable
+   (a listener added at lift time is silently ignored - review checklist 4) */
+document.addEventListener("touchmove", e => {
+  if (drag && drag.active && e.cancelable) e.preventDefault();
+}, {passive:false});
+document.addEventListener("contextmenu", e => {
+  if (e.target.closest("[data-guest],.seat-hit")) e.preventDefault();
+});
+function liftDrag(){
+  if (!drag || drag.active) return;
+  clearTimeout(drag.lpTimer);
+  drag.lpTimer = null;
+  drag.active = true;
+  drag.lastX = drag.startX;
+  document.body.classList.add("dragging");
+  const g = state.guests.get(drag.gid);
+  $("gname").textContent = g ? g.name : "";
+  const ghost = $("ghost");
+  ghost.style.display = "block";
+  ghost.style.left = (drag.startX + 14) + "px";
+  ghost.style.top = (drag.startY - 42) + "px";
+  $("dropHint").style.display = "block";
+  $("dropHint").textContent = "Drop on a table…";
+  hideTip();
+  if (navigator.vibrate) navigator.vibrate(10);
+  /* lifting from the drawer exposes the map; the drawer is a fixed overlay,
+     so the map's layout box - and everything under the finger - stays put */
+  if (isMobile() && drag.fromDrawer) setDrawer("peek");
+}
 document.addEventListener("pointerdown", e => {
   if (!editable || drag) return;
-  if (e.button !== undefined && e.button !== 0) return;
+  if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
   if (e.target.closest("button,input,textarea")) return;
   const src = e.target.closest("[data-guest]");
   if (!src) return;
   const gid = src.dataset ? src.dataset.guest : src.getAttribute("data-guest");
   if (!gid) return;
-  if (e.pointerType !== "mouse" && !e.target.closest(".grip,.seat-hit")) return;
-  drag = {gid, pid:e.pointerId, startX:e.clientX, startY:e.clientY, active:false};
+  drag = {gid, pid:e.pointerId, ptype:e.pointerType,
+    startX:e.clientX, startY:e.clientY, active:false, lpTimer:null,
+    fromDrawer: !!e.target.closest("#guestPanel")};
+  if (e.pointerType !== "mouse"){
+    if (e.target.closest(".seat-hit")) liftDrag();       /* map: immediate */
+    else drag.lpTimer = setTimeout(liftDrag, LP_MS);     /* lists: long-press */
+  }
 });
 document.addEventListener("pointermove", e => {
   if (!drag || e.pointerId !== drag.pid) return;
   if (e.pointerType === "mouse" && e.buttons === 0){ cancelDrag(); return; }
   if (!drag.active){
-    if (Math.hypot(e.clientX-drag.startX, e.clientY-drag.startY) < 7) return;
-    drag.active = true;
-    drag.lastX = e.clientX;
-    document.body.classList.add("dragging");
-    const g = state.guests.get(drag.gid);
-    $("gname").textContent = g ? g.name : "";
-    $("ghost").style.display = "block";
-    hideTip();
+    const dist = Math.hypot(e.clientX-drag.startX, e.clientY-drag.startY);
+    if (drag.lpTimer){
+      if (dist > LP_SLOP) cancelDrag();   /* moved before the press fired: a scroll */
+      return;
+    }
+    if (drag.ptype !== "mouse") return;   /* touch lifts only via the timer */
+    if (dist < 7) return;
+    liftDrag();
+    if (!drag || !drag.active) return;
   }
   e.preventDefault();
   const ghost = $("ghost");
@@ -1549,24 +1813,34 @@ document.addEventListener("pointermove", e => {
 });
 document.addEventListener("pointerup", e => {
   if (!drag || e.pointerId !== drag.pid) return;
-  const wasActive = drag.active, gid = drag.gid;
+  const wasActive = drag.active, gid = drag.gid, ptype = drag.ptype;
   cancelDrag();
   if (!wasActive) return;
-  const target = dropAt(e.clientX, e.clientY);
+  let target = dropAt(e.clientX, e.clientY);
   if (!target) return;
+  /* plan seat dots are ~8px at fit on a phone: a touch drop on a dot is a
+     TABLE drop (first free seat); seat precision lives in the table view */
+  if (target.type === "seat" && target.el && target.el.tagName === "circle" &&
+      ptype !== "mouse") target = {type:"table", table:target.table};
   if (target.type === "unseat") opUnseat(gid);
   else if (target.type === "seat") opSeatAt(gid, target.table, target.seat);
   else opSeatFirstFree(gid, target.table);
 });
 document.addEventListener("pointercancel", e => {
-  if (drag && e.pointerId === drag.pid) cancelDrag();
+  if (!drag || e.pointerId !== drag.pid) return;
+  const wasLive = drag.active;
+  cancelDrag();
+  if (wasLive) toast("The browser cancelled that drag - try again.");
 });
 function cancelDrag(){
+  if (drag && drag.lpTimer) clearTimeout(drag.lpTimer);
   const hadHighlight = drag && drag.active;
   drag = null;
   document.body.classList.remove("dragging");
   $("ghost").style.display = "none";
+  $("dropHint").style.display = "none";
   highlightDrop(null);
+  panPts.clear();               /* stale map pointers can never leap later */
   if (hadHighlight){
     suppressClickUntil = Date.now() + 250;   /* the click after a drop is not a tap */
     renderPlan();
@@ -1587,7 +1861,22 @@ function dropAt(x, y){
   return id === "unseat" ? {type:"unseat"} : {type:"table", table:id};
 }
 let lastCue = null, lastSeatCue = null;
+/* names the pending drop OUTSIDE the finger's shadow (review checklist 8) */
+function dropHintText(target){
+  if (!target) return "Drop on a table…";
+  if (target.type === "unseat") return "Drop: unseat";
+  if (target.type === "table") return `Drop: ${tName(target.table)} · first free seat`;
+  const touchDot = target.el && target.el.tagName === "circle" &&
+    drag && drag.ptype !== "mouse";
+  if (touchDot) return `Drop: ${tName(target.table)} · first free seat`;
+  const p = placement(target.table);
+  const occ = p.slots[target.seat];
+  return occ
+    ? `Drop: swap with ${state.guests.get(occ).name}`
+    : `Drop: ${tName(target.table)} · seat ${target.seat+1}`;
+}
 function highlightDrop(target){
+  if (drag && drag.active) $("dropHint").textContent = dropHintText(target);
   $("guestPanel").classList.toggle("dropcue", !!target && target.type === "unseat");
   const tableId = target && target.table ? target.table : null;
   if (lastCue && lastCue !== tableId){
@@ -1625,21 +1914,32 @@ function zoomEditActive(){
   const inp = $("zTitle").querySelector("input");
   return inp && document.activeElement === inp;
 }
+let drawerBefore = "peek";
 function openZoom(tid){
+  const wasOpen = !!zoomTable;
   zoomTable = tid;
+  if (!wasOpen) drawerBefore = getDrawer();
+  document.body.dataset.zoom = "open";     /* hides the guest drawer on mobile */
   $("zoomModal").style.display = "flex";
   renderZoom();
+  renderPlan();                            /* draw the selected-table highlight */
 }
 function closeZoom(){
+  if (!zoomTable) return;
   zoomTable = null;
+  delete document.body.dataset.zoom;
   $("zoomModal").style.display = "none";
+  if (isMobile()) setDrawer(drawerBefore);
+  renderPlan();
 }
 function zoomStep(dir){
   if (!zoomTable) return;
   const i = TABLES.findIndex(t => t.id === zoomTable);
   zoomTable = TABLES[(i+dir+TABLES.length)%TABLES.length].id;
   renderZoom();
+  renderPlan();          /* move the selected-table highlight with it */
 }
+$("drawerBack").onclick = () => closeZoom();
 function renderZoom(){
   if (!zoomTable) return;
   const t = TABLE_BY_ID[zoomTable];
@@ -1758,8 +2058,9 @@ const HELMETS = {
 const HELMET_TITLES = {centurion:"Centurion", gallic:"Gallic steel",
   lineart:"Line art", praetorian:"Praetorian"};
 function renderIconPick(){
-  $("iconPick").innerHTML = Object.keys(HELMETS).map(k =>
+  const html = Object.keys(HELMETS).map(k =>
     `<button data-icon="${k}" class="${k===seatIcon?"on":""}" title="${HELMET_TITLES[k]}">${HELMETS[k]}</button>`).join("");
+  document.querySelectorAll(".iconpick").forEach(elm => { elm.innerHTML = html; });
   $("tipIcon").innerHTML = HELMETS[seatIcon];
   $("famBtn").classList.toggle("on", colorFams);
 }
@@ -1789,13 +2090,7 @@ $("plan").addEventListener("pointerout", e => {
 });
 
 /* ============ reset: unseat everyone (guest list untouched) ============ */
-$("resetBtn").onclick = () => {
-  if (!editable) return;
-  const seatedN = [...state.guests.values()].filter(g => g.table).length;
-  if (!seatedN){ toast("Nobody is seated - nothing to reset."); return; }
-  toast(`Return all ${seatedN} seated guests to the unassigned list?`,
-    "Yes, reset seating", doReset);
-};
+$("resetBtn").onclick = () => resetFlow();
 async function doReset(){
   try{ await saveVersion("Auto - before reset"); }
   catch(_){ toast("Couldn't save the safety version - reset cancelled."); return; }
@@ -1956,7 +2251,9 @@ function seatingRows(){
   for (const [,g] of unseated()) rows.push(["Unseated", "", g.name]);
   return rows;
 }
-$("btnXlsx").onclick = () => {
+$("btnXlsx").onclick = () => exportXlsx();
+$("btnPdf").onclick = () => exportPdf();
+function exportXlsx(){
   if (typeof XLSX === "undefined"){ toast("The Excel library didn't load - try refreshing."); return; }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(seatingRows()), "Seating");
@@ -1964,8 +2261,8 @@ $("btnXlsx").onclick = () => {
   saveFile("wedding-seating.xlsx", buf,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   toast("Excel file saved.");
-};
-$("btnPdf").onclick = () => {
+}
+function exportPdf(){
   if (!window.jspdf){ toast("The PDF library didn't load - try refreshing."); return; }
   const doc = new jspdf.jsPDF({orientation:"landscape", unit:"pt", format:"a4"});
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
@@ -2038,7 +2335,7 @@ $("btnPdf").onclick = () => {
   }
   saveFile("wedding-seating.pdf", doc.output("arraybuffer"), "application/pdf");
   toast("PDF saved.");
-};
+}
 
 /* ============ boot ============ */
 setEditable(false);
