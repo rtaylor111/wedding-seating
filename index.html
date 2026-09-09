@@ -14,7 +14,7 @@
     --bg:#FFFFFF; --panel:#FBFBFA; --ink:#23252B; --muted:#7A7D85;
     --gold:#A98442; --gold-soft:#F5EFE0; --bronze:#7A5F2C;
     --line:#E8E7E3; --fixture:#F1F0EC; --fixture-ink:#9B9C93;
-    --wall:#2B2C31; --wall-ink:#C9CAC4; --chip:#F6F6F4; --plume:#B33A2E;
+    --wall:#C9CAC5; --wall-ink:#54574E; --chip:#F6F6F4; --plume:#B33A2E;
     --danger:#B33A2E;
   }
   *{box-sizing:border-box}
@@ -46,7 +46,7 @@
     align-items:center;justify-content:center;}
   .iconpick button svg{width:100%;height:100%;}
   .iconpick button.on{border-color:var(--gold);background:var(--gold-soft);}
-  #pinBtn{background:var(--gold);color:#fff;border-color:var(--gold);font-weight:700;}
+  #pinBtn{display:none;background:var(--gold);color:#fff;border-color:var(--gold);font-weight:700;}
 
   .app{display:flex;flex:1;min-height:0;}
 
@@ -86,12 +86,16 @@
   #listTabs button{flex:none;padding:4px 8px;font-size:11.5px;}
   .emptymsg{color:var(--muted);font-size:13px;font-style:italic;}
 
-  /* ---- floor plan (centre) ---- */
-  main{flex:1;padding:18px;min-width:0;overflow:auto;}
+  /* ---- floor plan (centre): fills the space, pans and zooms like a map ---- */
+  main{flex:1;padding:12px;min-width:0;display:flex;min-height:0;}
   .planwrap{background:#fff;border:1px solid var(--line);border-radius:12px;
-    padding:14px;max-width:900px;margin:0 auto;}
-  svg{display:block;width:100%;height:auto;}
-  .caption{max-width:900px;margin:10px auto 0;color:var(--muted);font-size:12.5px;}
+    padding:8px;flex:1;min-width:0;min-height:0;position:relative;overflow:hidden;}
+  #plan{display:block;width:100%;height:100%;touch-action:none;cursor:grab;}
+  body.dragging #plan{cursor:grabbing;}
+  .mapbtns{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;
+    gap:4px;z-index:5;}
+  .mapbtns .hbtn{width:30px;height:30px;padding:0;font-size:16px;
+    box-shadow:0 2px 8px rgba(35,37,43,.12);}
   .seat-hit{cursor:grab;touch-action:none;}
 
   /* ---- roster pane (right) ---- */
@@ -104,9 +108,7 @@
     border-radius:5px;width:22px;height:22px;font:700 13px Karla,sans-serif;cursor:pointer;
     line-height:1;padding:0;}
   .allseats button:hover{border-color:var(--gold);color:var(--ink);}
-  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;
-    transition:box-shadow .3s;}
-  .card.flash{box-shadow:0 0 0 3px var(--gold-soft),0 0 0 4px var(--gold);}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;}
   .card.dropcue{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft);}
   .card h3{font-family:Fraunces,Georgia,serif;font-size:15.5px;font-weight:600;margin:0;
     display:flex;align-items:center;gap:7px;}
@@ -156,8 +158,8 @@
   .guests.dropcue{outline:2px dashed var(--gold);outline-offset:-6px;}
   body.dragging, body.dragging .chip, body.dragging .rrow, body.dragging .seat-hit{cursor:grabbing;}
 
-  /* ---- seat card (hover) ---- */
-  #tip{position:fixed;z-index:10;pointer-events:none;display:none;
+  /* ---- seat card (hover/tap) - above the zoom so a seat tap always shows it ---- */
+  #tip{position:fixed;z-index:50;pointer-events:none;display:none;
     background:#fff;border:1px solid var(--line);border-radius:10px;
     box-shadow:0 6px 18px rgba(35,37,43,.14);padding:9px 14px 8px;text-align:center;
     max-width:240px;}
@@ -219,7 +221,19 @@
     font-style:italic;cursor:default;border-left-width:1px;border-right-width:1px;}
   .zseat.dropcue .zpill{background:var(--gold-soft);border-color:var(--gold);border-style:solid;}
   .zhint{font-size:12px;color:var(--muted);margin:0;text-align:center;}
+  .zlegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);
+    justify-content:center;}
+  .zlegend span{display:inline-flex;align-items:center;gap:5px;}
+  /* phones: the three-column zoom stacks so names keep their width */
   @media (max-width:640px){
+    .zstage{flex-direction:column;}
+    .ztable{flex:0 0 auto;min-height:50px;align-self:stretch;flex-direction:row;gap:12px;}
+    .ztable b{writing-mode:horizontal-tb;transform:none;font-size:16px;max-height:none;}
+    .zside{width:100%;}
+    .zseat.r{flex-direction:row;}
+    .zseat.r .zpill{flex-direction:row;
+      border-right:1px solid var(--line);border-left:4px solid var(--fc,var(--line));}
+    .zseat.r .zpill .nm{text-align:left;}
     .zseat .zhelm{flex-basis:24px;}
     .zseat .zhelm svg{width:24px;height:22px;}
   }
@@ -244,15 +258,20 @@
   .verrow button:hover{border-color:var(--gold);background:var(--gold-soft);}
   .mclose{margin-left:auto;}
 
-  /* ---- read-only mode ---- */
-  body.readonly .imports, body.readonly #tab-paste, body.readonly #tab-xlsx,
+  /* ---- read-only mode (#importTabs, NOT .imports - the list filter tabs
+          share that class and are a view control) ---- */
+  body.readonly #importTabs, body.readonly #tab-paste, body.readonly #tab-xlsx,
   body.readonly #tab-type, body.readonly .del, body.readonly .stepper,
   body.readonly #undoBtn, body.readonly #redoBtn, body.readonly #verBtn,
   body.readonly #iconPick, body.readonly #famBtn, body.readonly #resetBtn,
   body.readonly .allseats, body.readonly .dhint{display:none;}
   body.readonly .chip, body.readonly .rrow, body.readonly .seat-hit,
   body.readonly .zpill{cursor:default;}
-  body.readonly #pinBtn{display:inline-block;}   /* .xbtn hides it by default */
+  body.readonly .tname{cursor:default;}
+  body.readonly .tname:hover{border-bottom-color:transparent;}
+  body.readonly #pinBtn{display:inline-block;}
+  .vhint{display:none;}
+  body.readonly .vhint{display:inline;}
 
   @media (max-width:980px){
     body{height:auto;display:block;}
@@ -261,7 +280,8 @@
       overflow:visible;}
     .chips{flex:none;max-height:45vh;}
     .roster{border-bottom:0;border-top:1px solid var(--line);max-height:none;}
-    main{overflow:visible;}
+    main{display:block;}
+    .planwrap{height:72vh;}
   }
 </style>
 </head>
@@ -280,7 +300,7 @@
     <button class="hbtn" id="resetBtn" style="font-size:13px"
       title="Return every guest to unassigned (keeps the guest list)">Reset</button>
     <button class="xbtn" id="pinBtn">Enter edit code</button>
-    <span class="savestate" id="savestate">Connecting&hellip;</span>
+    <span class="savestate" id="savestate" aria-live="polite">Connecting&hellip;</span>
     <button class="hbtn" id="btnXlsx" style="font-size:13px">Export Excel</button>
     <button class="hbtn" id="btnPdf" style="font-size:13px">Export PDF</button>
   </div>
@@ -312,9 +332,6 @@
       </div>
     </div>
     <input type="search" id="search" placeholder="Search guests&hellip;">
-    <p class="hint dhint">Drag by the &#8942;&#8942; handle (or anywhere with a mouse) onto a seat,
-      a table, or a roster card. Drop on someone to swap. Drag back here to unseat.
-      &times; removes a guest everywhere.</p>
     <div style="display:flex;align-items:center;gap:6px">
       <h2 id="listHdr" style="flex:1">Guest list</h2>
       <div class="imports" id="listTabs">
@@ -326,11 +343,14 @@
   </aside>
 
   <main>
-    <div class="planwrap"><svg id="plan" viewBox="-10 -10 895 880" aria-label="Floor plan, Option B"></svg></div>
-    <p class="caption">Option B: 14 guest tables + two one-sided bridal tables. Seats number down the left
-      side then down the right (bridal: left to right). Hover or tap a filled seat for the guest's card;
-      drag a filled seat to move that guest. Click a table to zoom in and see every name;
-      click a table's name to rename it.</p>
+    <div class="planwrap">
+      <svg id="plan" viewBox="-10 -10 895 880" aria-label="Floor plan, Option B"></svg>
+      <div class="mapbtns">
+        <button class="hbtn" id="mapIn" title="Zoom in">+</button>
+        <button class="hbtn" id="mapOut" title="Zoom out">&minus;</button>
+        <button class="hbtn" id="mapFit" title="Fit whole plan">&#8962;</button>
+      </div>
+    </div>
   </main>
 
   <aside class="roster">
@@ -378,7 +398,7 @@
   <div class="name" id="tipName"></div>
   <div class="tbl" id="tipTbl"></div>
 </div>
-<div id="toast"></div>
+<div id="toast" aria-live="polite"></div>
 
 <div id="zoomModal">
   <div class="zpanel">
@@ -388,6 +408,7 @@
       <button class="hbtn" id="zNext" title="Next table">&#8250;</button>
       <button class="hbtn" id="zClose" title="Close">&times;</button>
     </div>
+    <div class="zlegend" id="zLegend"></div>
     <div class="zstage" id="zBody"></div>
     <p class="zhint dhint">Drag a legionary to another seat to move them; drop on someone to swap.
       &times; unseats (removal lives on the guest list). Click the table name to rename.</p>
@@ -539,13 +560,27 @@ function toast(msg, actionLabel, actionFn){
 function hideToast(){ $("toast").style.display = "none"; }
 
 /* ============ sync engine ============ */
-function setSync(ok){
-  online = ok;
+let everTalked = false;      // first response (or first failure after it) gates the red banner
+let mustRefetch = false;     // set on any failure: the next poll does a FULL fetch even if the
+                             // version looks equal, so a failed-write divergence always heals
+let pollBusy = false, postsInFlight = 0;
+const GUEST_ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
+
+function paintSync(){
   const ss = $("savestate");
-  ss.classList.toggle("bad", !ok);
-  if (!ok){ ss.textContent = "Can't reach the plan - not saving"; return; }
+  ss.classList.toggle("bad", everTalked && !online);
+  if (!everTalked){ ss.textContent = "Connecting…"; return; }
+  if (!online){ ss.textContent = "Can't reach the plan - not saving"; return; }
+  if (postsInFlight){ ss.textContent = "Saving…"; return; }
   const t = new Date().toLocaleTimeString(undefined, {hour:"2-digit", minute:"2-digit"});
-  ss.textContent = editable ? `Synced ${t}` : `View only · live · ${t}`;
+  ss.textContent = editable ? `Editing · Synced ${t}` : `View only · live · ${t}`;
+}
+function setSync(ok){
+  if (ok) everTalked = true;
+  else if (online) everTalked = true;   // a failure after contact shows the real banner
+  online = ok;
+  if (!ok) mustRefetch = true;
+  paintSync();
 }
 async function getJson(qs){
   const res = await fetch(EXEC + qs, {method:"GET"});
@@ -558,11 +593,17 @@ async function rawPost(body){
     headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(body)});
   return JSON.parse(await res.text());
 }
+/* patch batches sent but not yet acknowledged - re-applied over every adopt
+   so an earlier save's response can never wipe a later optimistic change */
+const pendingSent = [];
 function adopt(version, s){
+  if (version < serverVersion) return;   // a slow response from the past changes nothing
   serverVersion = version;
-  state.guests = new Map(Object.entries(s.guests||{}).map(([id,b]) => [id, {
-    name:String(b.name??""), table: TABLE_BY_ID[b.table] ? b.table : null,
-    seat:Number.isInteger(b.seat)?b.seat:null, seatedAt:b.seatedAt??null}]));
+  state.guests = new Map(Object.entries(s.guests||{})
+    .filter(([id]) => GUEST_ID_RE.test(id))
+    .map(([id,b]) => [id, {
+      name:String(b.name??""), table: TABLE_BY_ID[b.table] ? b.table : null,
+      seat:Number.isInteger(b.seat)?b.seat:null, seatedAt:b.seatedAt??null}]));
   state.tableCfg = new Map(Object.entries(s.tables||{}).map(([id,c]) => {
     const cfg = {};
     if (c && c.name) cfg.name = String(c.name);
@@ -572,6 +613,8 @@ function adopt(version, s){
   state.settings = {};
   for (const [id,v] of Object.entries(s.settings||{}))
     if (v && typeof v === "object") state.settings[id] = v;
+  for (const sent of pendingSent)
+    for (const p of sent) applyPatchLocal(p, "after");
   syncSettingsUi();
   render();
 }
@@ -582,17 +625,24 @@ function syncSettingsUi(){
   renderIconPick();
 }
 async function refetch(){
-  try{ const r = await getJson("?fn=state"); adopt(r.version, r.state); setSync(true); }
+  try{
+    const r = await getJson("?fn=state");
+    adopt(r.version, r.state);
+    mustRefetch = false;
+    setSync(true);
+  }
   catch(_){ setSync(false); }
 }
-let pollBusy = false, postsInFlight = 0;
 async function pollTick(){
   if (document.hidden || pollBusy || postsInFlight) return;
   pollBusy = true;
   try{
-    const r = await getJson("?fn=version");
-    if (r.version !== serverVersion) await refetch();
-    else setSync(true);
+    if (mustRefetch) await refetch();
+    else {
+      const r = await getJson("?fn=version");
+      if (r.version !== serverVersion) await refetch();
+      else setSync(true);
+    }
   }catch(_){ setSync(false); }
   pollBusy = false;
 }
@@ -602,29 +652,49 @@ addEventListener("focus", pollTick);
 
 /* one POST at a time so baseVersion advances cleanly */
 let postChain = Promise.resolve();
-function queuePost(patches, meta){
+function queuePost(sent, meta){
   postsInFlight++;
+  pendingSent.push(sent);
+  paintSync();
   postChain = postChain
-    .then(() => sendBatch(patches, meta))
+    .then(() => sendBatch(sent, meta))
     .catch(()=>{})
-    .finally(() => { postsInFlight--; });
+    .finally(() => {
+      postsInFlight--;
+      const i = pendingSent.indexOf(sent);
+      if (i >= 0) pendingSent.splice(i, 1);
+      paintSync();
+    });
 }
-async function sendBatch(patches, meta){
+/* name a conflict from the patches WE sent, never from post-adopt state */
+function conflictNames(conflicts, sent){
+  return conflicts.slice(0,3).map(c => {
+    if (c.kind === "settings") return "the app settings";
+    if (c.kind === "table") return tName(c.id);
+    const p = sent.find(x => x.kind === "guest" && x.id === c.id);
+    const b = p && (p.after || p.before);
+    return b && b.name ? b.name : "a guest";
+  }).join(", ");
+}
+async function sendBatch(sent, meta){
   try{
-    let res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches});
+    let res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches:sent});
     if (res.error === "stale"){
       serverVersion = res.version;   // one retry on the fresh base; preconditions still protect
-      res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches});
+      res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches:sent});
     }
     if (res.error) throw res;
+    /* drop from pending BEFORE adopting: the response already contains it */
+    const i = pendingSent.indexOf(sent);
+    if (i >= 0) pendingSent.splice(i, 1);
     adopt(res.version, res.state);
     setSync(true);
     if (res.conflicts && res.conflicts.length){
-      const names = res.conflicts.map(c => c.kind === "guest" && state.guests.get(c.id)
-        ? state.guests.get(c.id).name : c.id).slice(0,3).join(", ");
-      toast(`Someone else changed ${names || "that"} first - those parts were skipped.`);
+      toast(`Someone else changed ${conflictNames(res.conflicts, sent) || "that"} first - ` +
+        `those parts were skipped.`);
     }
   }catch(err){
+    rollbackFailed(sent, meta);
     if (err && err.error === "pin"){
       setEditable(false);
       try{ localStorage.removeItem(LS_PIN); }catch(_){}
@@ -633,25 +703,30 @@ async function sendBatch(patches, meta){
       toast("Too many wrong codes recently - writes are locked for a few minutes.");
     } else {
       setSync(false);
-      toast("Couldn't save that change - it has been undone locally.");
+      toast("Couldn't save that change - it has been undone.");
     }
-    rollbackFailed(meta);
     await refetch();
   }
 }
-function rollbackFailed(meta){
-  if (!meta) return;
-  if (meta.type === "commit"){
-    const i = undoStack.indexOf(meta.entry);
-    if (i >= 0) undoStack.splice(i, 1);
-  } else if (meta.type === "undo"){
-    const i = redoStack.indexOf(meta.entry);
-    if (i >= 0){ redoStack.splice(i, 1); undoStack.push(meta.entry); }
-  } else if (meta.type === "redo"){
-    const i = undoStack.indexOf(meta.entry);
-    if (i >= 0){ undoStack.splice(i, 1); redoStack.push(meta.entry); }
+/* revert the failed batch locally AND repair the stacks, so the screen never
+   keeps a change the server refused - even if the follow-up refetch fails too */
+function rollbackFailed(sent, meta){
+  for (let i = sent.length-1; i >= 0; i--) applyPatchLocal(sent[i], "before");
+  if (meta){
+    if (meta.type === "commit"){
+      let i = undoStack.indexOf(meta.entry);
+      if (i >= 0) undoStack.splice(i, 1);
+      i = redoStack.indexOf(meta.entry);          // it may have moved via an undo press
+      if (i >= 0) redoStack.splice(i, 1);
+    } else if (meta.type === "undo"){
+      const i = redoStack.indexOf(meta.entry);
+      if (i >= 0){ redoStack.splice(i, 1); undoStack.push(meta.entry); }
+    } else if (meta.type === "redo"){
+      const i = undoStack.indexOf(meta.entry);
+      if (i >= 0){ undoStack.splice(i, 1); redoStack.push(meta.entry); }
+    }
   }
-  updateUndoUi();
+  render();
 }
 
 /* ============ edit-code (PIN) flow ============ */
@@ -659,19 +734,35 @@ function setEditable(on){
   editable = on;
   document.body.classList.toggle("readonly", !on);
   $("verBtn").style.display = on ? "inline-block" : "none";
-  setSync(online);
+  paintSync();
 }
 async function verifyPin(candidate, silent){
   try{
-    let res = await rawPost({pin:candidate, fn:"apply", baseVersion:serverVersion, patches:[]});
-    if (res.error === "stale"){
-      serverVersion = res.version;
+    /* fn:"ping" checks the code without writing; older server versions
+       answer unknown_fn, and then the empty-apply fallback still works */
+    let res = await rawPost({pin:candidate, fn:"ping"});
+    if (res.error === "unknown_fn"){
       res = await rawPost({pin:candidate, fn:"apply", baseVersion:serverVersion, patches:[]});
+      if (res.error === "stale"){
+        serverVersion = res.version;
+        res = await rawPost({pin:candidate, fn:"apply", baseVersion:serverVersion, patches:[]});
+      }
     }
-    if (res.error === "pin"){ if (!silent) toast("Wrong edit code."); return false; }
-    if (res.error === "locked"){ if (!silent) toast("Too many tries - locked for a few minutes."); return false; }
+    if (res.error === "pin"){
+      if (silent){
+        /* a stored code that stopped working: forget it, say so once, and stop
+           burning rate-limit attempts on every page load */
+        try{ localStorage.removeItem(LS_PIN); }catch(_){}
+        pin = "";
+        toast("Your saved edit code is no longer valid - enter the new one.");
+      } else toast("Wrong edit code.");
+      return false;
+    }
+    if (res.error === "locked"){
+      toast("Too many tries recently - codes are locked for a few minutes.");
+      return false;
+    }
     if (res.error) throw res;
-    adopt(res.version, res.state);
     pin = candidate;
     try{ localStorage.setItem(LS_PIN, pin); }catch(_){}
     setEditable(true);
@@ -713,23 +804,26 @@ function applyPatchLocal(p, dir){
     syncSettingsUi();
   }
 }
+/* returns true only when the change was actually applied (locally) and queued -
+   callers must not announce success otherwise */
 function commit(patches){
-  if (!patches.length) return;
-  if (!editable){ toast("View only - enter the edit code to make changes."); return; }
-  if (!online){ toast("Can't reach the plan right now - change not made."); return; }
+  if (!patches.length) return false;
+  if (!editable){ toast("View only - enter the edit code to make changes."); return false; }
+  if (!online){ toast("Can't reach the plan right now - change not made."); return false; }
   undoStack.push(patches);
   if (undoStack.length > 100) undoStack.shift();
   redoStack.length = 0;
   for (const p of patches) applyPatchLocal(p, "after");
   render();
   queuePost(patches, {type:"commit", entry:patches});
+  return true;
 }
 const invert = patches => [...patches].reverse()
   .map(p => ({kind:p.kind, id:p.id, before:p.after, after:p.before}));
 function undo(){
-  if (!editable || !online) return;
+  if (!undoStack.length) return;
+  if (!editable || !online){ toast("Can't undo right now - the plan is unreachable."); return; }
   const entry = undoStack.pop();
-  if (!entry) return;
   redoStack.push(entry);
   const inv = invert(entry);
   for (const p of inv) applyPatchLocal(p, "after");
@@ -737,9 +831,9 @@ function undo(){
   queuePost(inv, {type:"undo", entry});
 }
 function redo(){
-  if (!editable || !online) return;
+  if (!redoStack.length) return;
+  if (!editable || !online){ toast("Can't redo right now - the plan is unreachable."); return; }
   const entry = redoStack.pop();
-  if (!entry) return;
   undoStack.push(entry);
   for (const p of entry) applyPatchLocal(p, "after");
   render();
@@ -752,10 +846,10 @@ function updateUndoUi(){
 $("undoBtn").onclick = () => undo();
 $("redoBtn").onclick = () => redo();
 document.addEventListener("keydown", e => {
+  if (e.target.closest("input,textarea")) return;   /* Esc in a rename cancels the rename only */
   if (e.key === "Escape"){ closeZoom(); $("verModal").style.display = "none";
     $("pinModal").style.display = "none"; return; }
   if (!editable) return;
-  if (e.target.closest("input,textarea")) return;
   if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
   else if ((e.ctrlKey||e.metaKey) && (e.key.toLowerCase() === "y" ||
     (e.shiftKey && e.key.toLowerCase() === "z"))){ e.preventDefault(); redo(); }
@@ -780,7 +874,7 @@ const settingsBody = () => ({seatIcon, colorBySurname: colorFams});
 
 /* ============ operations ============ */
 function opAddGuests(names){
-  commit(names.map(name =>
+  return commit(names.map(name =>
     ({kind:"guest", id:newId(), before:null, after:{name, table:null, seat:null, seatedAt:null}})));
 }
 function opSeatAt(gid, tableId, seatIdx){
@@ -872,18 +966,21 @@ function opSetSeatsAll(n){
     if (p && p.length) patches.push(...p);
   }
   if (!patches.length){ toast(`All guest tables are already on ${n} seats.`); return; }
-  commit(patches);
-  toast(`All guest tables set to ${n} seats.`);
+  if (commit(patches)) toast(`All guest tables set to ${n} seats.`);
 }
+/* the precondition must be null when the server has never stored settings.ui,
+   or the very first settings write conflicts forever (stage-2 review Blocker 1) */
+const settingsBefore = () => state.settings.ui ? settingsBody() : null;
 function opSetIcon(k){
   if (!HELMETS[k] || k === seatIcon) return;
-  commit([{kind:"settings", id:"ui", before:settingsBody(),
+  commit([{kind:"settings", id:"ui", before:settingsBefore(),
     after:{seatIcon:k, colorBySurname: colorFams}}]);
 }
 function opToggleFams(){
   const turningOn = !colorFams;
-  commit([{kind:"settings", id:"ui", before:settingsBody(),
+  const done = commit([{kind:"settings", id:"ui", before:settingsBefore(),
     after:{seatIcon, colorBySurname: turningOn}}]);
+  if (!done) return;
   if (turningOn){
     const set = new Set([...state.guests.values()].map(g => surnameOf(g.name)).filter(Boolean));
     toast(set.size ? `Coloured ${set.size} surname${set.size>1?"s":""}.` : "No guests to colour yet.");
@@ -902,12 +999,13 @@ function addNames(raw){
     if (existing.has(n.toLowerCase())) dupes.push(n);
     else { fresh.push(n); existing.add(n.toLowerCase()); }
   }
-  if (fresh.length) opAddGuests(fresh);
+  const added = fresh.length ? opAddGuests(fresh) : false;
+  if (fresh.length && !added) return;   /* commit already explained why */
   if (dupes.length){
-    toast(`${fresh.length ? `Added ${fresh.length}. ` : ""}${dupes.length} already on the list: ` +
+    toast(`${added ? `Added ${fresh.length}. ` : ""}${dupes.length} already on the list: ` +
       `${dupes.slice(0,4).join(", ")}${dupes.length>4?"…":""}`,
       "Add anyway", () => opAddGuests(dupes));
-  } else if (fresh.length){
+  } else if (added){
     toast(`Added ${fresh.length} guest${fresh.length>1?"s":""}.`);
   }
 }
@@ -952,7 +1050,7 @@ $("search").addEventListener("input", renderChips);
 /* ============ rendering ============ */
 const NS = "http://www.w3.org/2000/svg";
 const C = {ink:"#23252B",muted:"#7A7D85",gold:"#A98442",goldSoft:"#F5EFE0",bronze:"#7A5F2C",
-  line:"#E8E7E3",fixture:"#F1F0EC",fixInk:"#9B9C93",wall:"#2B2C31",wallInk:"#C9CAC4",
+  line:"#E8E7E3",fixture:"#F1F0EC",fixInk:"#9B9C93",wall:"#C9CAC5",wallInk:"#54574E",
   danger:"#B33A2E"};
 const el = (tag, attrs, text) => {
   const e = document.createElementNS(NS, tag);
@@ -1071,12 +1169,95 @@ function renderPlan(){
         "text-anchor":"middle","font-family":"Karla,sans-serif","font-weight":700,
         "pointer-events":"none"},`${n}/${p.n}`));
     }
-    g.addEventListener("click", () => openZoom(t.id));
+    g.addEventListener("click", e => {
+      if (Date.now() < suppressClickUntil) return;     /* a pan or drag just ended */
+      if (e.target.dataset && e.target.dataset.name){
+        showTipFor(e.target);                          /* seat tap = the guest's card */
+        clearTimeout(tipTimer);
+        tipTimer = setTimeout(hideTip, 2500);
+        return;
+      }
+      openZoom(t.id);                                  /* table tap = the zoom */
+    });
     svg.appendChild(g);
   }
   svg.appendChild(el("text",{x:435,y:52,fill:C.muted,"font-size":12,"text-anchor":"middle",
     "font-family":"Karla,sans-serif","letter-spacing":".14em"},"BRIDAL TABLE"));
 }
+
+/* ============ map view: the plan pans and zooms like a map ============ */
+const VIEW0 = {x:-10, y:-10, w:895, h:880};
+let view = {...VIEW0};
+let suppressClickUntil = 0;   /* set when a pan or drag ends, so the click that
+                                 follows it never opens a zoom or a seat card */
+function applyView(){
+  $("plan").setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+}
+function clampView(){
+  view.w = Math.max(160, Math.min(VIEW0.w, view.w));
+  view.h = view.w * (VIEW0.h/VIEW0.w);
+  view.x = Math.max(VIEW0.x - 40, Math.min(VIEW0.x + VIEW0.w + 40 - view.w, view.x));
+  view.y = Math.max(VIEW0.y - 40, Math.min(VIEW0.y + VIEW0.h + 40 - view.h, view.y));
+}
+function zoomAt(cx, cy, factor){
+  const r = $("plan").getBoundingClientRect();
+  const sx = view.x + (cx - r.left)/r.width * view.w;
+  const sy = view.y + (cy - r.top)/r.height * view.h;
+  const w = Math.max(160, Math.min(VIEW0.w, view.w * factor));
+  const f = w / view.w;
+  view = {x: sx - (sx - view.x)*f, y: sy - (sy - view.y)*f, w, h: view.h*f};
+  clampView(); applyView();
+}
+$("mapIn").onclick = () => { const r = $("plan").getBoundingClientRect();
+  zoomAt(r.left + r.width/2, r.top + r.height/2, 0.72); };
+$("mapOut").onclick = () => { const r = $("plan").getBoundingClientRect();
+  zoomAt(r.left + r.width/2, r.top + r.height/2, 1.39); };
+$("mapFit").onclick = () => { view = {...VIEW0}; applyView(); };
+$("plan").addEventListener("wheel", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 1.15 : 0.87);
+}, {passive:false});
+/* pan with one pointer, pinch with two - never while a guest drag is live */
+const panPts = new Map();
+$("plan").addEventListener("pointerdown", e => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  /* a press that will become a guest drag is not a pan */
+  if (editable && e.target.closest("[data-guest]") &&
+      (e.pointerType === "mouse" || e.target.closest(".grip,.seat-hit"))) return;
+  panPts.set(e.pointerId, {x:e.clientX, y:e.clientY, moved:false});
+  try{ $("plan").setPointerCapture(e.pointerId); }catch(_){}
+});
+$("plan").addEventListener("pointermove", e => {
+  const pt = panPts.get(e.pointerId);
+  if (!pt || (drag && drag.active)) return;
+  const r = $("plan").getBoundingClientRect();
+  if (panPts.size === 2){
+    const [a, b] = [...panPts.values()];
+    const prevD = Math.hypot(a.x-b.x, a.y-b.y);
+    pt.x = e.clientX; pt.y = e.clientY;
+    const [a2, b2] = [...panPts.values()];
+    const newD = Math.hypot(a2.x-b2.x, a2.y-b2.y);
+    if (prevD > 4 && newD > 4)
+      zoomAt((a2.x+b2.x)/2, (a2.y+b2.y)/2, prevD/newD);
+    pt.moved = true;
+    return;
+  }
+  const dx = e.clientX - pt.x, dy = e.clientY - pt.y;
+  if (!pt.moved && Math.hypot(dx, dy) < 5) return;
+  pt.moved = true;
+  view.x -= dx / r.width * view.w;
+  view.y -= dy / r.height * view.h;
+  pt.x = e.clientX; pt.y = e.clientY;
+  clampView(); applyView();
+});
+const endPan = e => {
+  const pt = panPts.get(e.pointerId);
+  if (pt && pt.moved) suppressClickUntil = Date.now() + 250;
+  panPts.delete(e.pointerId);
+};
+$("plan").addEventListener("pointerup", endPan);
+$("plan").addEventListener("pointercancel", endPan);
+applyView();
 
 let guestView = "all";
 $("listTabs").addEventListener("click", e => {
@@ -1112,7 +1293,7 @@ function renderChips(){
       }).join("")
     : `<p class="emptymsg">${state.guests.size
         ? (q ? "No match." : "Everyone is seated. Bravo.")
-        : "No guests yet - add some above."}</p>`;
+        : (editable ? "No guests yet - add some above." : "No guests on the list yet.")}</p>`;
 }
 
 function renderRoster(){
@@ -1170,9 +1351,11 @@ document.addEventListener("click", e => {
   const am = e.target.closest("[data-allminus]");
   const ap = e.target.closest("[data-allplus]");
   if (am || ap){
-    const vals = new Set(GUEST_TABLES.map(t => tSeats(t.id)));
-    const cur = vals.size === 1 ? [...vals][0] : Math.max(...vals);
-    opSetSeatsAll(cur + (ap ? 1 : -1));
+    const vals = [...new Set(GUEST_TABLES.map(t => tSeats(t.id)))];
+    /* mixed counts: the first press evens everything to the min (-) or max (+)
+       instead of stepping past values nobody chose */
+    if (vals.length > 1) opSetSeatsAll(ap ? Math.max(...vals) : Math.min(...vals));
+    else opSetSeatsAll(vals[0] + (ap ? 1 : -1));
     return;
   }
   const rn = e.target.closest("[data-rename]");
@@ -1256,7 +1439,10 @@ function cancelDrag(){
   document.body.classList.remove("dragging");
   $("ghost").style.display = "none";
   highlightDrop(null);
-  if (hadHighlight) renderPlan();
+  if (hadHighlight){
+    suppressClickUntil = Date.now() + 250;   /* the click after a drop is not a tap */
+    renderPlan();
+  }
 }
 function dropAt(x, y){
   const hit = document.elementFromPoint(x, y);
@@ -1337,6 +1523,22 @@ function renderZoom(){
     `<span class="n">${n}/${p.n}</span>` +
     `<span class="stepper"><button data-seatminus="${t.id}" title="One seat fewer">&minus;</button>` +
     `<button data-seatplus="${t.id}" title="One seat more">+</button></span>`;
+  /* family colour key for this table (Ross: "colour coding near it") */
+  if (colorFams){
+    const seen = new Map();
+    for (const gid of [...p.slots.filter(Boolean), ...p.extras]){
+      const g = state.guests.get(gid);
+      const s = surnameOf(g.name);
+      if (s && !seen.has(s)) seen.set(s, famColor(g.name));
+    }
+    $("zLegend").style.display = seen.size ? "flex" : "none";
+    $("zLegend").innerHTML = [...seen.entries()].map(([s,c]) =>
+      `<span><span class="fam" style="background:${c}"></span>` +
+      `${esc(s.charAt(0).toUpperCase()+s.slice(1))}</span>`).join("");
+  } else {
+    $("zLegend").style.display = "none";
+    $("zLegend").innerHTML = "";
+  }
   const helm = HELMETS[seatIcon];
   const seatHtml = (i, side) => {
     const gid = p.slots[i];
@@ -1381,6 +1583,7 @@ $("zPrev").onclick = () => zoomStep(-1);
 $("zNext").onclick = () => zoomStep(1);
 $("zClose").onclick = closeZoom;
 $("zoomModal").addEventListener("click", e => {
+  if (Date.now() < suppressClickUntil) return;   /* a drag released on the backdrop */
   if (e.target === $("zoomModal")) closeZoom();
 });
 
@@ -1452,13 +1655,6 @@ $("plan").addEventListener("pointerout", e => {
   if (e.pointerType !== "mouse") return;
   if (!tipTimer) hideTip();
 });
-$("plan").addEventListener("click", e => {
-  if (e.target.dataset && e.target.dataset.name){
-    showTipFor(e.target);
-    clearTimeout(tipTimer);
-    tipTimer = setTimeout(hideTip, 2500);
-  }
-});
 
 /* ============ reset: unseat everyone (guest list untouched) ============ */
 $("resetBtn").onclick = () => {
@@ -1474,8 +1670,8 @@ async function doReset(){
   const patches = [];
   for (const [gid, g] of state.guests)
     if (g.table) patches.push(guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null}));
-  commit(patches);
-  toast("All seating cleared - everyone is back on the guest list. Undo with ↶.");
+  if (commit(patches))
+    toast("All seating cleared - everyone is back on the guest list. Undo with ↶.");
 }
 
 /* ============ version history (server-backed) ============ */
@@ -1544,7 +1740,7 @@ function snapshotDiff(b){
     const snapSet = {seatIcon: HELMETS[snapUi.seatIcon] ? snapUi.seatIcon : seatIcon,
       colorBySurname: !!snapUi.colorBySurname};
     if (JSON.stringify(settingsBody()) !== JSON.stringify(snapSet))
-      patches.push({kind:"settings", id:"ui", before:settingsBody(), after:snapSet});
+      patches.push({kind:"settings", id:"ui", before:settingsBefore(), after:snapSet});
   }
   return patches;
 }
@@ -1554,8 +1750,8 @@ async function applySnapshot(b, what){
   const patches = snapshotDiff(b);
   $("verModal").style.display = "none";
   if (!patches.length){ toast("Already identical - nothing to change."); return; }
-  commit(patches);
-  toast(`Restored ${what} (${patches.length} changes). Undo with the ↶ button.`);
+  if (commit(patches))
+    toast(`Restored ${what} (${patches.length} changes). Undo with the ↶ button.`);
 }
 async function restoreVersion(vid){
   try{
@@ -1650,13 +1846,13 @@ $("btnPdf").onclick = () => {
   R(0,115,55,120,"F");
   R(300,180,40,40,"F"); R(545,180,40,40,"F"); R(300,405,40,40,"F"); R(545,405,40,40,"F");
   R(375,587,145,38,"F"); R(195,625,105,230,"F"); R(610,660,245,170,"F"); R(18,705,47,138,"F");
-  doc.setFillColor(43,44,49); R(300,625,285,230,"F");
+  doc.setFillColor(201,202,197); R(300,625,285,230,"F");
   doc.setFontSize(7); doc.setTextColor(155,156,147); doc.setFont("helvetica","normal");
   const label = (t,x,y) => doc.text(t, ox+x*s, oy+y*s, {align:"center"});
   label("PILLAR",320,205); label("PILLAR",565,205); label("PILLAR",320,430); label("PILLAR",565,430);
   label("DANCEFLOOR",442,320); label("DJ",447,610); label("BAR",247,745); label("LOUNGE",732,748);
   label("CAKE",41,778);
-  doc.setTextColor(255,255,255); label("WALL",442,745);
+  doc.setTextColor(84,87,78); label("WALL",442,745);
   doc.setTextColor(122,125,133); label("BRIDAL TABLE",435,50);
   for (const t of TABLES){
     const p = placement(t.id), n = p.slots.filter(Boolean).length + p.extras.length;

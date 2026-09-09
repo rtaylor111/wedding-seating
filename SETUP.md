@@ -43,6 +43,15 @@ Apps Script web app. These are the steps only you can do.
 3. Everything should go green. The "rate limit" test is a separate button because it
    deliberately locks writes for 5 minutes.
 
+## Cutover reminders (stage 3)
+
+- The `index.html` in this repo carries the **DEV (throwaway) sheet's** `/exec` URL.
+  At cutover it must be swapped for the real sheet's URL (or the same deployment kept
+  and the DEV data replaced via backup-restore). Do not go live pointing at the dev sheet.
+- Whenever `Code.gs` changes here, update the deployed copy: paste the new file over the
+  old in the Apps Script editor, then **Deploy → Manage deployments → pencil →
+  Version: New version → Deploy** (keeps the URL).
+
 ## What the backend stores
 
 - Sheet tab `state`: cell A1 = the whole plan as JSON, B1 = a version counter.

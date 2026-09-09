@@ -119,6 +119,7 @@ function doPost(e) {
   catch (err) { return json_({ error: "bad_json" }); }
   var gate = pinOk_(body.pin);
   if (!gate.ok) return json_({ error: gate.error });
+  if (body.fn === "ping") return json_({ ok: true });   // PIN check with no write
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); }
   catch (err) { return json_({ error: "busy" }); }
@@ -138,14 +139,16 @@ function apply_(body) {
     return json_({ error: "stale", version: cur.version, state: cur.state });
   }
   var KINDS = { guest: "guests", table: "tables", settings: "settings" };
+  var ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
   var conflicts = [];
+  var applied = 0;
   var patches = body.patches || [];
   for (var i = 0; i < patches.length; i++) {
     var p = patches[i];
     var store = KINDS[p.kind];
     if (!store) continue;
     var id = String(p.id || "");
-    if (!id || id.length > 200) continue;
+    if (!ID_RE.test(id)) continue;
     var curVal = cur.state[store].hasOwnProperty(id) ? cur.state[store][id] : null;
     if ("before" in p && canon_(curVal) !== canon_(p.before)) {
       conflicts.push({ kind: p.kind, id: id });
@@ -153,6 +156,11 @@ function apply_(body) {
     }
     if (p.after === null || p.after === undefined) delete cur.state[store][id];
     else cur.state[store][id] = p.after;
+    applied++;
+  }
+  // nothing applied (empty batch or all conflicts): no write, no version churn
+  if (applied === 0) {
+    return json_({ version: cur.version, state: cur.state, conflicts: conflicts });
   }
   var version = cur.version + 1;
   writeState_(cur.state, version);
