@@ -10,12 +10,15 @@ Apps Script web app. These are the steps only you can do.
 2. Extensions → Apps Script.
 3. Delete the stub in the editor, paste the whole of `apps-script/Code.gs`, save (Ctrl+S).
 
-## 2. Set the edit PIN
+## 2. Set the edit PINs
 
 1. In the Apps Script editor: left sidebar → Project Settings (gear icon).
 2. Scroll to **Script Properties** → Add script property.
 3. Property: `EDIT_PIN`  Value: your edit code - **at least 8 characters** (it's what you
    and Tali will type once per device to unlock editing).
+4. Second property: `EDIT_PIN_TEST` - a DIFFERENT code for the shareable TEST copy
+   (`…/wedding-seating/?sandbox` - red banner, its own data in `state_test`/`versions_test`
+   tabs). Give this one out freely; it can never unlock or touch the real plan.
 
 ## 3. Deploy as a web app
 

@@ -32,8 +32,12 @@ function sheet_(name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-function readState_() {
-  var sh = sheet_("state");
+/* db=test selects a fully separate store (own tabs, own PIN) - the shareable
+   sandbox. Anything else is the real plan. */
+function dbSfx_(v) { return v === "test" ? "_test" : ""; }
+
+function readState_(sfx) {
+  var sh = sheet_("state" + sfx);
   var raw = sh.getRange("A1").getValue();
   var v = Number(sh.getRange("B1").getValue());
   if (!raw) {
@@ -49,8 +53,8 @@ function readState_() {
   return { state: state, version: isFinite(v) ? v : 0 };
 }
 
-function writeState_(state, version) {
-  var sh = sheet_("state");
+function writeState_(state, version, sfx) {
+  var sh = sheet_("state" + sfx);
   sh.getRange("A1").setValue(JSON.stringify(state));
   sh.getRange("B1").setValue(version);
 }
@@ -66,16 +70,17 @@ function canon_(x) {
 
 function doGet(e) {
   var fn = (e && e.parameter && e.parameter.fn) || "state";
+  var sfx = dbSfx_(e && e.parameter && e.parameter.db);
   if (fn === "version") {
-    var v = Number(sheet_("state").getRange("B1").getValue());
+    var v = Number(sheet_("state" + sfx).getRange("B1").getValue());
     return json_({ version: isFinite(v) ? v : 0 });
   }
   if (fn === "state") {
-    var s = readState_();
+    var s = readState_(sfx);
     return json_({ version: s.version, state: s.state });
   }
   if (fn === "versions") {
-    var rows = sheet_("versions").getDataRange().getValues().filter(function (r) { return r[0]; });
+    var rows = sheet_("versions" + sfx).getDataRange().getValues().filter(function (r) { return r[0]; });
     var list = rows.map(function (r) {
       return { id: String(r[0]), label: String(r[1]), at: Number(r[2]), guests: Number(r[4] || 0) };
     }).sort(function (a, b) { return b.at - a.at; });
@@ -83,7 +88,7 @@ function doGet(e) {
   }
   if (fn === "getVersion") {
     var id = String((e.parameter && e.parameter.id) || "");
-    var all = sheet_("versions").getDataRange().getValues();
+    var all = sheet_("versions" + sfx).getDataRange().getValues();
     for (var i = 0; i < all.length; i++) {
       if (String(all[i][0]) === id) {
         return json_({ id: id, label: String(all[i][1]), at: Number(all[i][2]),
@@ -95,21 +100,21 @@ function doGet(e) {
   return json_({ error: "unknown_fn" });
 }
 
-function pinOk_(pin) {
+function pinOk_(pin, sfx) {
   var props = PropertiesService.getScriptProperties();
-  var real = props.getProperty("EDIT_PIN");
+  var real = props.getProperty(sfx === "_test" ? "EDIT_PIN_TEST" : "EDIT_PIN");
   if (!real) return { ok: false, error: "unconfigured" };
-  var fails = Number(props.getProperty("PIN_FAILS") || 0);
-  var at = Number(props.getProperty("PIN_FAILS_AT") || 0);
+  var fails = Number(props.getProperty("PIN_FAILS" + sfx) || 0);
+  var at = Number(props.getProperty("PIN_FAILS_AT" + sfx) || 0);
   var inWindow = Date.now() - at < PIN_COOLDOWN_MS;
   if (fails >= PIN_MAX_FAILS && inWindow) return { ok: false, error: "locked" };
   if (String(pin || "") !== real) {
-    props.setProperty("PIN_FAILS", String((inWindow ? fails : 0) + 1));
-    props.setProperty("PIN_FAILS_AT", String(Date.now()));
+    props.setProperty("PIN_FAILS" + sfx, String((inWindow ? fails : 0) + 1));
+    props.setProperty("PIN_FAILS_AT" + sfx, String(Date.now()));
     return { ok: false, error: "pin" };
   }
-  props.deleteProperty("PIN_FAILS");
-  props.deleteProperty("PIN_FAILS_AT");
+  props.deleteProperty("PIN_FAILS" + sfx);
+  props.deleteProperty("PIN_FAILS_AT" + sfx);
   return { ok: true };
 }
 
@@ -117,15 +122,16 @@ function doPost(e) {
   var body;
   try { body = JSON.parse(e.postData.contents); }
   catch (err) { return json_({ error: "bad_json" }); }
-  var gate = pinOk_(body.pin);
+  var sfx = dbSfx_(body.db);
+  var gate = pinOk_(body.pin, sfx);
   if (!gate.ok) return json_({ error: gate.error });
   if (body.fn === "ping") return json_({ ok: true });   // PIN check with no write
   var lock = LockService.getScriptLock();
   try { lock.waitLock(20000); }
   catch (err) { return json_({ error: "busy" }); }
   try {
-    if (body.fn === "apply") return apply_(body);
-    if (body.fn === "saveVersion") return saveVersion_(body);
+    if (body.fn === "apply") return apply_(body, sfx);
+    if (body.fn === "saveVersion") return saveVersion_(body, sfx);
     return json_({ error: "unknown_fn" });
   } finally {
     lock.releaseLock();
@@ -133,8 +139,8 @@ function doPost(e) {
 }
 
 /* The whole read-check-apply-write cycle runs INSIDE the lock (doPost holds it). */
-function apply_(body) {
-  var cur = readState_();
+function apply_(body, sfx) {
+  var cur = readState_(sfx);
   if (Number(body.baseVersion) !== cur.version) {
     return json_({ error: "stale", version: cur.version, state: cur.state });
   }
@@ -163,13 +169,13 @@ function apply_(body) {
     return json_({ version: cur.version, state: cur.state, conflicts: conflicts });
   }
   var version = cur.version + 1;
-  writeState_(cur.state, version);
+  writeState_(cur.state, version, sfx);
   return json_({ version: version, state: cur.state, conflicts: conflicts });
 }
 
-function saveVersion_(body) {
-  var sh = sheet_("versions");
-  var st = (body.state && typeof body.state === "object") ? body.state : readState_().state;
+function saveVersion_(body, sfx) {
+  var sh = sheet_("versions" + sfx);
+  var st = (body.state && typeof body.state === "object") ? body.state : readState_(sfx).state;
   var id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   var guests = Object.keys(st.guests || {}).length;
   sh.appendRow([id, String(body.label || "Untitled").slice(0, 60), Date.now(),

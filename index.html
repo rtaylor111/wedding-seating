@@ -270,8 +270,6 @@
   body.readonly .tname{cursor:default;}
   body.readonly .tname:hover{border-bottom-color:transparent;}
   body.readonly #pinBtn{display:inline-block;}
-  .vhint{display:none;}
-  body.readonly .vhint{display:inline;}
 
   @media (max-width:980px){
     body{height:auto;display:block;}
@@ -453,8 +451,19 @@
 "use strict";
 /* ================= backend ================= */
 const EXEC = "https://script.google.com/macros/s/AKfycbyp5-k171DQ5kP4dj9Tp3a69vPuexB8QcnT6iDMZjdXmrtLR3XJbGdZbKr42bpzE1W8hw/exec";
-const LS_PIN = "wsEditPin";
-const POLL_MS = 10000;
+/* ?sandbox = the shareable TEST copy: separate data (own tabs in the sheet),
+   its own edit code, and a red banner. It can never touch the real plan. */
+const SANDBOX = new URLSearchParams(location.search).has("sandbox");
+const DB = SANDBOX ? "test" : "";
+const LS_PIN = SANDBOX ? "wsEditPinTest" : "wsEditPin";
+if (SANDBOX){
+  document.title = "TEST - Wedding Seating Planner";
+  document.body.insertAdjacentHTML("afterbegin",
+    `<div style="background:#B33A2E;color:#fff;text-align:center;
+       font:700 16px Karla,sans-serif;letter-spacing:.35em;padding:7px 10px;">
+       TEST<span style="letter-spacing:0;font-weight:500;font-size:12.5px;">
+       &nbsp;&middot;&nbsp;practice copy - separate from the real plan</span></div>`);
+}
 
 /* ============ table geometry (the approved mockup's plan) ============ */
 const TABLES = [
@@ -576,19 +585,19 @@ function paintSync(){
   ss.textContent = editable ? `Editing · Synced ${t}` : `View only · live · ${t}`;
 }
 function setSync(ok){
-  if (ok) everTalked = true;
-  else if (online) everTalked = true;   // a failure after contact shows the real banner
+  everTalked = true;   // every call means an attempt finished - success or failure
   online = ok;
   if (!ok) mustRefetch = true;
   paintSync();
 }
 async function getJson(qs){
-  const res = await fetch(EXEC + qs, {method:"GET"});
+  const res = await fetch(EXEC + qs + (DB ? "&db=" + DB : ""), {method:"GET"});
   const data = JSON.parse(await res.text());   // non-JSON throws -> fail closed
   if (data && data.error) throw data;
   return data;
 }
 async function rawPost(body){
+  if (DB) body = {...body, db: DB};
   const res = await fetch(EXEC, {method:"POST",
     headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(body)});
   return JSON.parse(await res.text());
@@ -646,7 +655,17 @@ async function pollTick(){
   }catch(_){ setSync(false); }
   pollBusy = false;
 }
-setInterval(pollTick, POLL_MS);
+/* adaptive poll (Ross): ~4s while someone is actively using the page,
+   relaxing to 12s idle; still nothing while the tab is hidden */
+const POLL_ACTIVE_MS = 4000, POLL_IDLE_MS = 12000, ACTIVE_WINDOW_MS = 120000;
+let lastActivity = Date.now();
+["pointerdown","keydown","wheel"].forEach(ev =>
+  document.addEventListener(ev, () => { lastActivity = Date.now(); }, {passive:true}));
+(function pollLoop(){
+  const active = Date.now() - lastActivity < ACTIVE_WINDOW_MS;
+  setTimeout(async () => { await pollTick(); pollLoop(); },
+    active ? POLL_ACTIVE_MS : POLL_IDLE_MS);
+})();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pollTick(); });
 addEventListener("focus", pollTick);
 
@@ -711,6 +730,10 @@ async function sendBatch(sent, meta){
 /* revert the failed batch locally AND repair the stacks, so the screen never
    keeps a change the server refused - even if the follow-up refetch fails too */
 function rollbackFailed(sent, meta){
+  /* out of the pending queue FIRST, or the catch's refetch re-applies the
+     very patches reverted below (scoped re-review blocker) */
+  const pi = pendingSent.indexOf(sent);
+  if (pi >= 0) pendingSent.splice(pi, 1);
   for (let i = sent.length-1; i >= 0; i--) applyPatchLocal(sent[i], "before");
   if (meta){
     if (meta.type === "commit"){
@@ -956,8 +979,9 @@ function opSetSeatsAll(n){
   n = Math.max(1, Math.min(14, n));
   const blocked = GUEST_TABLES.filter(t => occOf(t.id) > n);
   if (blocked.length){
-    toast(`${blocked.map(t=>tName(t.id)).slice(0,4).join(", ")}${blocked.length>4?"…":""} ` +
-      `already seat more than ${n} - unseat first.`);
+    toast(`Can't set ${n} seats everywhere - ` +
+      `${blocked.map(t=>tName(t.id)).slice(0,4).join(", ")}${blocked.length>4?"…":""} ` +
+      `${blocked.length>1?"have":"has"} more guests than that. Unseat someone first.`);
     return;
   }
   const patches = [];
@@ -1224,10 +1248,13 @@ $("plan").addEventListener("pointerdown", e => {
   /* a press that will become a guest drag is not a pan */
   if (editable && e.target.closest("[data-guest]") &&
       (e.pointerType === "mouse" || e.target.closest(".grip,.seat-hit"))) return;
+  /* no setPointerCapture: capturing to the svg retargets the mouse's follow-up
+     click AWAY from the table <g>, killing click-to-zoom (scoped re-review
+     blocker). Document-level move/up listeners below track the pan instead,
+     even when the pointer leaves the svg. */
   panPts.set(e.pointerId, {x:e.clientX, y:e.clientY, moved:false});
-  try{ $("plan").setPointerCapture(e.pointerId); }catch(_){}
 });
-$("plan").addEventListener("pointermove", e => {
+document.addEventListener("pointermove", e => {
   const pt = panPts.get(e.pointerId);
   if (!pt || (drag && drag.active)) return;
   const r = $("plan").getBoundingClientRect();
@@ -1255,8 +1282,8 @@ const endPan = e => {
   if (pt && pt.moved) suppressClickUntil = Date.now() + 250;
   panPts.delete(e.pointerId);
 };
-$("plan").addEventListener("pointerup", endPan);
-$("plan").addEventListener("pointercancel", endPan);
+document.addEventListener("pointerup", endPan);
+document.addEventListener("pointercancel", endPan);
 applyView();
 
 let guestView = "all";
@@ -1529,12 +1556,14 @@ function renderZoom(){
     for (const gid of [...p.slots.filter(Boolean), ...p.extras]){
       const g = state.guests.get(gid);
       const s = surnameOf(g.name);
-      if (s && !seen.has(s)) seen.set(s, famColor(g.name));
+      if (s && !seen.has(s)){
+        const parts = normName(g.name).split(" ");    /* surname AS TYPED (McDonald, O'Neill) */
+        seen.set(s, {c: famColor(g.name), disp: parts[parts.length-1]});
+      }
     }
     $("zLegend").style.display = seen.size ? "flex" : "none";
-    $("zLegend").innerHTML = [...seen.entries()].map(([s,c]) =>
-      `<span><span class="fam" style="background:${c}"></span>` +
-      `${esc(s.charAt(0).toUpperCase()+s.slice(1))}</span>`).join("");
+    $("zLegend").innerHTML = [...seen.values()].map(v =>
+      `<span><span class="fam" style="background:${v.c}"></span>${esc(v.disp)}</span>`).join("");
   } else {
     $("zLegend").style.display = "none";
     $("zLegend").innerHTML = "";
