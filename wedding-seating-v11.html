@@ -1,0 +1,1569 @@
+<title>Wedding Seating Planner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Karla:wght@400;500;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<style>
+  /* Deliberately single-theme: a clean white treatment. */
+  :root{
+    --bg:#FFFFFF; --panel:#FBFBFA; --ink:#23252B; --muted:#7A7D85;
+    --gold:#A98442; --gold-soft:#F5EFE0; --bronze:#7A5F2C;
+    --line:#E8E7E3; --fixture:#F1F0EC; --fixture-ink:#9B9C93;
+    --wall:#2B2C31; --wall-ink:#C9CAC4; --chip:#F6F6F4; --plume:#B33A2E;
+    --danger:#B33A2E;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 Karla,-apple-system,Segoe UI,sans-serif;
+    height:100vh;display:flex;flex-direction:column;}
+  header{flex:0 0 auto;}
+
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:12px 22px;border-bottom:1px solid var(--line);background:var(--bg);}
+  header h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:21px;margin:0;}
+  .counts{color:var(--muted);font-size:13.5px;}
+  .counts b{color:var(--ink);font-variant-numeric:tabular-nums;}
+  .hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .savestate{font-size:12.5px;color:var(--muted);}
+  .savestate.bad{color:var(--danger);font-weight:700;}
+  .xbtn,.hbtn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
+    padding:7px 12px;font:500 13px Karla,sans-serif;cursor:pointer;}
+  .xbtn{display:none;}
+  .hbtn{padding:5px 10px;font-size:15px;line-height:1;}
+  .hbtn:disabled{opacity:.35;cursor:default;}
+  .hbtn.on{border-color:var(--gold);background:var(--gold-soft);}
+  .xbtn:hover,.hbtn:not(:disabled):hover{border-color:var(--gold);background:var(--gold-soft);}
+  .fam{width:9px;height:9px;border-radius:50%;flex:0 0 9px;display:inline-block;}
+  .xbtn:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--gold);outline-offset:1px;}
+  .iconpick{display:flex;gap:4px;align-items:center;}
+  .iconpick button{border:1px solid var(--line);background:#fff;border-radius:7px;
+    width:32px;height:29px;padding:3px;cursor:pointer;display:flex;
+    align-items:center;justify-content:center;}
+  .iconpick button svg{width:100%;height:100%;}
+  .iconpick button.on{border-color:var(--gold);background:var(--gold-soft);}
+
+  .app{display:flex;flex:1;min-height:0;}
+
+  /* ---- guest panel (left) ---- */
+  .guests{width:268px;flex:0 0 268px;border-right:1px solid var(--line);
+    background:var(--panel);padding:16px;display:flex;flex-direction:column;gap:13px;
+    overflow:hidden;}
+  h2{font-family:Fraunces,Georgia,serif;font-size:16px;font-weight:600;margin:0;}
+  .imports{display:flex;gap:6px;}
+  .imports button{flex:1;border:1px solid var(--line);background:#fff;color:var(--ink);
+    border-radius:7px;padding:6px 4px;font:500 12.5px Karla,sans-serif;cursor:pointer;}
+  .imports button.on{border-color:var(--gold);background:var(--gold-soft);}
+  textarea{width:100%;height:70px;resize:none;border:1px solid var(--line);border-radius:8px;
+    background:#fff;color:var(--ink);font:14px Karla,sans-serif;padding:8px;}
+  .addbtn{border:0;background:var(--gold);color:#fff;border-radius:8px;
+    padding:8px;font:700 14px Karla,sans-serif;cursor:pointer;}
+  .hint{font-size:12.5px;color:var(--muted);margin:0;}
+  .typerow{display:flex;gap:6px;}
+  .typerow input{flex:1;min-width:0;}
+  input[type=text],input[type=search]{border:1px solid var(--line);border-radius:8px;
+    background:#fff;color:var(--ink);padding:7px 10px;font:14px Karla,sans-serif;}
+  .filebtn{position:relative;overflow:hidden;}
+  .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+  .chips{display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:60px;}
+  .chip{display:flex;align-items:center;gap:6px;background:var(--chip);
+    border:1px solid var(--line);border-radius:8px;padding:5px 8px;cursor:grab;
+    font-size:14px;user-select:none;-webkit-user-select:none;}
+  .grip{color:var(--muted);letter-spacing:1.5px;font-size:12px;cursor:grab;
+    touch-action:none;padding:5px 6px;flex:0 0 auto;}
+  .chip .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .del{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;
+    padding:0 2px;line-height:1;}
+  .del:hover{color:var(--danger);}
+  .loc{color:var(--muted);font:700 10.5px Karla,sans-serif;flex:0 0 auto;
+    max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-variant-numeric:tabular-nums;}
+  #listTabs button{flex:none;padding:4px 8px;font-size:11.5px;}
+  .emptymsg{color:var(--muted);font-size:13px;font-style:italic;}
+
+  /* ---- floor plan (centre) ---- */
+  main{flex:1;padding:18px;min-width:0;overflow:auto;}
+  .planwrap{background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:14px;max-width:900px;margin:0 auto;}
+  svg{display:block;width:100%;height:auto;}
+  .caption{max-width:900px;margin:10px auto 0;color:var(--muted);font-size:12.5px;}
+  .seat-hit{cursor:grab;touch-action:none;}
+
+  /* ---- roster pane (right) ---- */
+  .roster{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--panel);
+    padding:16px;overflow-y:auto;
+    display:flex;flex-direction:column;gap:10px;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+    transition:box-shadow .3s;}
+  .card.flash{box-shadow:0 0 0 3px var(--gold-soft),0 0 0 4px var(--gold);}
+  .card.dropcue{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft);}
+  .card h3{font-family:Fraunces,Georgia,serif;font-size:15.5px;font-weight:600;margin:0;
+    display:flex;align-items:center;gap:7px;}
+  .card h3 .tname{cursor:pointer;border-bottom:1px dashed transparent;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card h3 .tname:hover{border-bottom-color:var(--gold);}
+  .card h3 input{font:600 15px Fraunces,Georgia,serif;width:120px;padding:2px 6px;}
+  .card .n{margin-left:auto;font:700 12px Karla,sans-serif;color:var(--muted);
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .card.full .n{color:var(--bronze);}
+  .card.over .n{color:var(--danger);}
+  .stepper{display:flex;gap:2px;}
+  .stepper button{border:1px solid var(--line);background:#fff;color:var(--muted);
+    border-radius:5px;width:19px;height:19px;font:700 12px Karla,sans-serif;cursor:pointer;
+    line-height:1;padding:0;}
+  .stepper button:hover{border-color:var(--gold);color:var(--ink);}
+  .card ul{margin:7px 0 0;padding:0;list-style:none;font-size:13.5px;}
+  .rrow{display:flex;align-items:center;gap:4px;padding:1.5px 0;
+    border-bottom:1px dashed var(--line);cursor:grab;
+    user-select:none;-webkit-user-select:none;}
+  .rrow:last-child{border-bottom:0;}
+  .rrow.dropcue{background:var(--gold-soft);border-radius:5px;}
+  .rrow .seatno{color:var(--muted);font:700 11px Karla,sans-serif;width:16px;
+    text-align:right;flex:0 0 16px;font-variant-numeric:tabular-nums;}
+  .rrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card .empty{color:var(--muted);font-style:italic;font-size:13px;margin:6px 0 0;}
+
+  /* ---- drag ghost: a running legionary carrying the guest ---- */
+  #ghost{position:fixed;z-index:20;pointer-events:none;display:none;text-align:center;}
+  #ghost .gname{display:inline-block;background:#fff;border:1px solid var(--gold);
+    border-radius:7px;padding:2px 9px;font:700 12.5px Karla,sans-serif;
+    box-shadow:0 4px 12px rgba(35,37,43,.18);white-space:nowrap;max-width:190px;
+    overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;}
+  #ghost .soldier{display:block;transform:scaleX(var(--face,1));}
+  #ghost .bob{animation:gbob .38s ease-in-out infinite;display:block;}
+  #ghost .legA{animation:gswingA .38s linear infinite;transform-origin:19px 31px;transform-box:view-box;}
+  #ghost .legB{animation:gswingB .38s linear infinite;transform-origin:21px 31px;transform-box:view-box;}
+  #ghost .armA{animation:garmA .38s linear infinite;transform-origin:24.5px 20px;transform-box:view-box;}
+  #ghost .armB{animation:garmB .38s linear infinite;transform-origin:15px 21px;transform-box:view-box;}
+  @keyframes gswingA{0%,100%{transform:rotate(27deg)}50%{transform:rotate(-27deg)}}
+  @keyframes gswingB{0%,100%{transform:rotate(-27deg)}50%{transform:rotate(27deg)}}
+  @keyframes garmA{0%,100%{transform:rotate(-13deg)}50%{transform:rotate(13deg)}}
+  @keyframes garmB{0%,100%{transform:rotate(13deg)}50%{transform:rotate(-13deg)}}
+  @keyframes gbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6px)}}
+  @media (prefers-reduced-motion:reduce){
+    #ghost .bob,#ghost .legA,#ghost .legB,#ghost .armA,#ghost .armB{animation:none;}}
+  .guests.dropcue{outline:2px dashed var(--gold);outline-offset:-6px;}
+  body.dragging, body.dragging .chip, body.dragging .rrow, body.dragging .seat-hit{cursor:grabbing;}
+
+  /* ---- seat card (hover) ---- */
+  #tip{position:fixed;z-index:10;pointer-events:none;display:none;
+    background:#fff;border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 6px 18px rgba(35,37,43,.14);padding:9px 14px 8px;text-align:center;
+    max-width:240px;}
+  #tipIcon{display:flex;justify-content:center;line-height:0;}
+  #tipIcon svg{width:42px;height:38px;}
+  #tip .name{font:700 13.5px Karla,sans-serif;color:var(--ink);margin-top:3px;
+    overflow-wrap:break-word;}
+  #tip .tbl{font:12px Karla,sans-serif;color:var(--muted);}
+
+  /* ---- toast ---- */
+  #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:30;
+    background:var(--ink);color:#fff;border-radius:10px;padding:10px 16px;
+    font-size:14px;display:none;max-width:min(560px,90vw);text-align:center;
+    box-shadow:0 8px 22px rgba(35,37,43,.3);}
+  #toast button{margin-left:10px;border:0;border-radius:6px;background:var(--gold);
+    color:#fff;font:700 13px Karla,sans-serif;padding:5px 10px;cursor:pointer;}
+
+  /* ---- versions modal ---- */
+  #verModal{position:fixed;inset:0;z-index:40;background:rgba(35,37,43,.35);
+    display:none;align-items:center;justify-content:center;padding:20px;}
+  #verModal .panel{background:#fff;border-radius:14px;max-width:460px;width:100%;
+    max-height:80vh;display:flex;flex-direction:column;padding:18px;gap:12px;
+    box-shadow:0 18px 50px rgba(35,37,43,.3);}
+  #verModal h2{font-size:18px;}
+  .verhead{display:flex;gap:8px;align-items:center;}
+  .verhead input{flex:1;min-width:0;}
+  .verlist{overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+  .verrow{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font-size:13.5px;}
+  .verrow .vl{flex:1;min-width:0;}
+  .verrow .vl b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .verrow .vl span{color:var(--muted);font-size:12px;}
+  .verrow button{border:1px solid var(--line);background:#fff;border-radius:7px;
+    padding:5px 10px;font:500 12.5px Karla,sans-serif;cursor:pointer;}
+  .verrow button:hover{border-color:var(--gold);background:var(--gold-soft);}
+  .vclose{margin-left:auto;}
+
+  /* ---- table zoom ---- */
+  #zoomModal{position:fixed;inset:0;z-index:35;background:rgba(35,37,43,.35);
+    display:none;align-items:center;justify-content:center;padding:20px;}
+  #zoomModal .zpanel{background:#fff;border-radius:14px;max-width:560px;width:100%;
+    max-height:86vh;display:flex;flex-direction:column;padding:16px 18px;gap:10px;
+    box-shadow:0 18px 50px rgba(35,37,43,.3);overflow-y:auto;}
+  .zhead{display:flex;align-items:center;gap:8px;}
+  .zhead h2{font-size:19px;display:flex;align-items:center;gap:8px;flex:1;min-width:0;}
+  .zhead h2 .tname{cursor:pointer;border-bottom:1px dashed transparent;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .zhead h2 .tname:hover{border-bottom-color:var(--gold);}
+  .zhead h2 input{font:600 17px Fraunces,Georgia,serif;width:150px;padding:2px 6px;}
+  .zhead .n{font:700 13px Karla,sans-serif;color:var(--muted);white-space:nowrap;}
+  .zcols{display:flex;gap:12px;align-items:stretch;}
+  .zcol{list-style:none;margin:0;padding:0;flex:1;display:flex;flex-direction:column;
+    gap:6px;justify-content:space-around;min-width:0;}
+  .ztable{flex:0 0 84px;background:var(--gold-soft);border:2px solid var(--gold);
+    border-radius:12px;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:4px;padding:10px 6px;text-align:center;}
+  .ztable b{font-family:Fraunces,Georgia,serif;font-size:15px;overflow-wrap:anywhere;}
+  .ztable span{font:700 12px Karla,sans-serif;color:var(--bronze);}
+  .ztable.zfull{background:var(--bronze);border-color:var(--bronze);}
+  .ztable.zfull b,.ztable.zfull span{color:#fff;}
+  .zslot{display:flex;align-items:center;gap:5px;border:1px solid var(--line);
+    border-radius:8px;padding:6px 8px;font-size:13.5px;cursor:grab;background:var(--chip);
+    user-select:none;-webkit-user-select:none;}
+  .zslot.empty{background:#fff;border-style:dashed;color:var(--muted);
+    font-style:italic;cursor:default;}
+  .zslot.dropcue{background:var(--gold-soft);border-color:var(--gold);border-style:solid;}
+  .zslot .seatno{color:var(--muted);font:700 11px Karla,sans-serif;flex:0 0 15px;
+    text-align:right;font-variant-numeric:tabular-nums;}
+  .zslot .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .zhint{font-size:12px;color:var(--muted);margin:0;text-align:center;}
+
+  /* ---- read-only mode ---- */
+  body.readonly .imports, body.readonly #tab-paste, body.readonly #tab-xlsx,
+  body.readonly #tab-type, body.readonly .del, body.readonly .stepper,
+  body.readonly #undoBtn, body.readonly #redoBtn, body.readonly #verBtn,
+  body.readonly #iconPick, body.readonly #famBtn, body.readonly #resetBtn,
+  body.readonly .dhint{display:none;}
+  body.readonly .chip, body.readonly .rrow, body.readonly .seat-hit{cursor:default;}
+
+  @media (max-width:980px){
+    body{height:auto;display:block;}
+    .app{flex-direction:column;height:auto;}
+    .guests,.roster{width:auto;flex:auto;border:0;border-bottom:1px solid var(--line);
+      overflow:visible;}
+    .chips{flex:none;max-height:45vh;}
+    .roster{border-bottom:0;border-top:1px solid var(--line);max-height:none;}
+    main{overflow:visible;}
+  }
+</style>
+
+<header>
+  <h1>Wedding Seating Planner</h1>
+  <span class="counts" id="counts"></span>
+  <div class="hdr-right">
+    <span class="iconpick" id="iconPick" title="Choose your seat-card helmet"></span>
+    <button class="hbtn" id="famBtn" style="font-size:13px"
+      title="Colour-code guests who share a surname">Families</button>
+    <button class="hbtn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
+    <button class="hbtn" id="redoBtn" title="Redo (Ctrl+Y)" disabled>&#8631;</button>
+    <button class="xbtn" id="verBtn" style="display:none">Versions</button>
+    <button class="hbtn" id="resetBtn" style="font-size:13px" title="Return every guest to unassigned (keeps the guest list)">Reset</button>
+    <span class="savestate" id="savestate">Connecting&hellip;</span>
+    <button class="xbtn" id="btnXlsx">Export Excel</button>
+    <button class="xbtn" id="btnPdf">Export PDF</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="guests" id="guestPanel" data-drop="unseat">
+    <h2>Guests</h2>
+    <div class="imports" id="importTabs">
+      <button data-tab="paste" class="on">Paste</button>
+      <button data-tab="xlsx">Upload .xlsx</button>
+      <button data-tab="type">Type</button>
+    </div>
+    <div id="tab-paste">
+      <textarea id="pasteBox" placeholder="One name per line"></textarea>
+      <button class="addbtn" id="pasteAdd" style="width:100%;margin-top:6px">Add names</button>
+      <p class="hint" style="margin-top:6px">Copy a column in Excel, then paste it here.
+        A &ldquo;Name&rdquo; header row is ignored.</p>
+    </div>
+    <div id="tab-xlsx" style="display:none">
+      <button class="addbtn filebtn" style="width:100%">Choose .xlsx file
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv"></button>
+      <p class="hint" style="margin-top:6px">Names are read from the first column of the first sheet.</p>
+    </div>
+    <div id="tab-type" style="display:none">
+      <div class="typerow">
+        <input type="text" id="typeBox" placeholder="Guest name">
+        <button class="addbtn" id="typeAdd">Add</button>
+      </div>
+    </div>
+    <input type="search" id="search" placeholder="Search guests&hellip;">
+    <p class="hint dhint">Drag by the &#8942;&#8942; handle (or anywhere with a mouse) onto a seat,
+      a table, or a roster card. Drop on someone to swap. Drag back here to unseat.
+      &times; removes a guest everywhere.</p>
+    <div style="display:flex;align-items:center;gap:6px">
+      <h2 id="listHdr" style="flex:1">Guest list</h2>
+      <div class="imports" id="listTabs">
+        <button data-view="all" class="on">All</button>
+        <button data-view="unseated">Unseated</button>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </aside>
+
+  <main>
+    <div class="planwrap"><svg id="plan" viewBox="-10 -10 895 880" aria-label="Floor plan, Option B"></svg></div>
+    <p class="caption">Option B: 14 guest tables + two one-sided bridal tables. Seats number down the left
+      side then down the right (bridal: left to right). Hover or tap a filled seat for the guest's card;
+      drag a filled seat to move that guest. Use &minus;/+ in the roster to change a table's seat count.
+      Click a table to zoom in and see every name; click a table's name to rename it.</p>
+  </main>
+
+  <aside class="roster">
+    <h2>Roster</h2>
+    <div id="cards" style="display:flex;flex-direction:column;gap:10px"></div>
+  </aside>
+</div>
+
+<div id="ghost">
+  <span class="gname" id="gname"></span>
+  <span class="soldier"><span class="bob">
+    <svg viewBox="0 0 40 48" width="46" height="55" aria-hidden="true">
+      <g class="armB"><rect x="13.2" y="20" width="3.5" height="9" rx="1.7" fill="#E8B88A"/></g>
+      <ellipse cx="12" cy="27" rx="5" ry="8" fill="#B33A2E" stroke="#A98442" stroke-width="1.2"/>
+      <circle cx="12" cy="27" r="1.6" fill="#C9A227"/>
+      <g class="legA"><path d="M19 31 L15 42 L11.5 41" stroke="#E8B88A" stroke-width="3.4"
+        fill="none" stroke-linecap="round"/></g>
+      <g class="legB"><path d="M21 31 L26 42 L29.5 41.2" stroke="#D9A878" stroke-width="3.4"
+        fill="none" stroke-linecap="round"/></g>
+      <path d="M14 18 L26 18 L27 30 Q20 33 13 30 Z" fill="#B33A2E"/>
+      <path d="M13.6 22 h13" stroke="#C9A227" stroke-width="1.6"/>
+      <path d="M13.9 26 h12.5" stroke="#C9A227" stroke-width="1.6"/>
+      <g class="armA">
+        <rect x="23.2" y="19" width="3.5" height="10" rx="1.7" fill="#E8B88A"/>
+        <line x1="28" y1="33" x2="32.5" y2="9" stroke="#8C6A2F" stroke-width="1.8"/>
+        <path d="M32.5 9 l1.6 -5.5 l1.2 6 Z" fill="#7A828C"/>
+      </g>
+      <circle cx="21" cy="12" r="4.6" fill="#E8B88A"/>
+      <path d="M15.5 12 Q15.5 5.5 21 5.5 Q26.5 5.5 26.5 12 L26.5 13 Q28.2 13.5 28.7 15.5
+        L26 15.5 L25.5 13.5 L16.5 13.5 Z" fill="#C9A227" stroke="#A98442" stroke-width="1"/>
+      <path d="M15 7.5 Q21 -3 27.5 6.5 L25.5 8.2 Q21 1.5 17 8.8 Z" fill="#B33A2E"/>
+    </svg>
+  </span></span>
+</div>
+<div id="tip">
+  <span id="tipIcon"></span>
+  <div class="name" id="tipName"></div>
+  <div class="tbl" id="tipTbl"></div>
+</div>
+<div id="toast"></div>
+
+<div id="zoomModal">
+  <div class="zpanel">
+    <div class="zhead">
+      <button class="hbtn" id="zPrev" title="Previous table">&#8249;</button>
+      <h2 id="zTitle"></h2>
+      <button class="hbtn" id="zNext" title="Next table">&#8250;</button>
+      <button class="hbtn" id="zClose" title="Close">&times;</button>
+    </div>
+    <div id="zBody"></div>
+    <p class="zhint dhint">Drag names between seats to rearrange; drop on someone to swap.
+      &times; unseats (removal lives on the guest list). Click the table name to rename.</p>
+  </div>
+</div>
+
+<div id="verModal">
+  <div class="panel">
+    <h2>Version history</h2>
+    <div class="verhead">
+      <input type="text" id="verLabel" placeholder="Label this version (optional)" maxlength="40">
+      <button class="addbtn" id="verSave">Save now</button>
+      <button class="hbtn vclose" id="verClose">&times;</button>
+    </div>
+    <div class="verlist" id="verList"><p class="emptymsg">Loading&hellip;</p></div>
+    <div class="verhead">
+      <button class="hbtn" id="bakSave" style="font-size:13px;flex:1">Download backup</button>
+      <button class="hbtn filebtn" id="bakLoadBtn" style="font-size:13px;flex:1">Restore backup
+        <input type="file" id="bakFile" accept=".json,application/json"></button>
+    </div>
+    <p class="hint">Restoring replaces the current seating with the saved one. A safety
+      version is saved automatically first, and a restore can be undone with &#8630;.
+      The backup file holds the seating data - every guest, their seat, and the
+      table set-up. Download one before any big change.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============ table geometry (the approved mockup's plan) ============ */
+const TABLES = [
+  {id:"T1",  def:"T1",  x:140,y:60, w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T2",  def:"T2",  x:140,y:172,w:55,h:113, defSeats:10, maxSeats:14, o:"v"},
+  {id:"B1",  def:"Bridal 1", x:355,y:83,w:80,h:47, defSeats:5, maxSeats:8, o:"h"},
+  {id:"B2",  def:"Bridal 2", x:435,y:83,w:80,h:47, defSeats:5, maxSeats:8, o:"h"},
+  {id:"T3",  def:"T3",  x:635,y:63, w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T4",  def:"T4",  x:635,y:175,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T5",  def:"T5",  x:755,y:63, w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T6",  def:"T6",  x:755,y:175,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T7",  def:"T7",  x:45, y:318,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T8",  def:"T8",  x:45, y:430,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T9",  def:"T9",  x:193,y:318,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T10", def:"T10", x:193,y:430,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T11", def:"T11", x:635,y:345,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T12", def:"T12", x:635,y:457,w:55,h:113, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T13", def:"T13", x:755,y:345,w:55,h:112, defSeats:10, maxSeats:14, o:"v"},
+  {id:"T14", def:"T14", x:755,y:457,w:55,h:113, defSeats:10, maxSeats:14, o:"v"},
+];
+const TABLE_BY_ID = Object.fromEntries(TABLES.map(t=>[t.id,t]));
+
+/* ============ state ============ */
+const state = {
+  guests: new Map(),    // id -> {name, table:null|string, seat:null|int, seatedAt:null|number}
+  tableCfg: new Map(),  // id -> {name?, seats?}
+};
+let db = null, downloads = null, editable = true, seatIcon = "centurion", colorFams = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tName = id => (state.tableCfg.get(id)||{}).name || TABLE_BY_ID[id].def;
+function tSeats(id){
+  const t = TABLE_BY_ID[id], cfg = state.tableCfg.get(id);
+  const n = cfg && Number.isFinite(cfg.seats) ? Math.round(cfg.seats) : t.defSeats;
+  return Math.max(1, Math.min(t.maxSeats, n));
+}
+const totalSeats = () => TABLES.reduce((s,t) => s+tSeats(t.id), 0);
+const guestsOf = id => [...state.guests.entries()]
+  .filter(([,g]) => g.table === id)
+  .sort((a,b) => (a[1].seatedAt||0)-(b[1].seatedAt||0) || (a[0]<b[0]?-1:1));
+const unseated = () => [...state.guests.entries()]
+  .filter(([,g]) => !g.table)
+  .sort((a,b) => a[1].name.localeCompare(b[1].name));
+
+/* family colour-coding: guests sharing a surname (the name's last word)
+   get a stable colour derived from the surname itself; unique surnames
+   stay neutral so the colours carry meaning */
+function surnameOf(name){
+  const parts = normName(name).toLowerCase().split(" ");
+  return parts[parts.length-1] || "";
+}
+function famCounts(){
+  const counts = {};
+  for (const g of state.guests.values()){
+    const s = surnameOf(g.name);
+    if (s) counts[s] = (counts[s]||0)+1;
+  }
+  return counts;
+}
+function famColor(name, counts){
+  if (!colorFams) return null;
+  const s = surnameOf(name);
+  if (!s || (counts[s]||0) < 2) return null;
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  return `hsl(${Math.round((h*137.508)%360)},55%,52%)`;
+}
+
+/* Deterministic seat placement: honour each guest's stored seat when it's
+   valid and free (earlier-seated wins a clash); everyone else takes the
+   first free slot; anyone left over when the table is over-capacity is an
+   "extra" shown in the roster without a seat number. */
+function placement(tableId){
+  const n = tSeats(tableId);
+  const slots = new Array(n).fill(null), extras = [];
+  const pending = [];
+  for (const [gid,g] of guestsOf(tableId)){
+    if (Number.isInteger(g.seat) && g.seat >= 0 && g.seat < n && slots[g.seat] === null)
+      slots[g.seat] = gid;
+    else pending.push(gid);
+  }
+  for (const gid of pending){
+    const free = slots.indexOf(null);
+    if (free >= 0) slots[free] = gid; else extras.push(gid);
+  }
+  return {slots, extras, n};
+}
+function occOf(tableId){ const p = placement(tableId);
+  return p.slots.filter(Boolean).length + p.extras.length; }
+
+/* ============ toast ============ */
+let toastTimer = null;
+function toast(msg, actionLabel, actionFn){
+  const t = $("toast");
+  t.textContent = msg;
+  if (actionLabel){
+    const b = document.createElement("button");
+    b.textContent = actionLabel;
+    b.onclick = () => { hideToast(); actionFn(); };
+    t.appendChild(b);
+  }
+  t.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, actionLabel ? 10000 : 5000);
+}
+function hideToast(){ $("toast").style.display = "none"; }
+
+/* ============ patch journal: every change is undoable ============ */
+/* patch = {kind:"guest"|"table"|"settings", id, before, after} where before/
+   after are the FULL document body (or null = document absent). */
+const undoStack = [], redoStack = [];
+function newId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+async function withSave(fn){
+  try { await fn(); }
+  catch(e){ toast("Save failed - please try that again."); }
+}
+function applyPatch(p, dir){
+  const v = p[dir];
+  if (p.kind === "guest"){
+    if (db) withSave(() => v ? db.doc("guests/"+p.id).set({...v}) : db.doc("guests/"+p.id).delete());
+    else v ? state.guests.set(p.id, {...v}) : state.guests.delete(p.id);
+  } else if (p.kind === "table"){
+    if (db) withSave(() => (v && Object.keys(v).length)
+      ? db.doc("tables/"+p.id).set({...v}) : db.doc("tables/"+p.id).delete());
+    else (v && Object.keys(v).length) ? state.tableCfg.set(p.id, {...v}) : state.tableCfg.delete(p.id);
+  } else if (p.kind === "settings"){
+    if (db) withSave(() => db.doc("settings/"+p.id).set({...v}));
+    else {
+      if (v && HELMETS[v.seatIcon]) seatIcon = v.seatIcon;
+      if (v) colorFams = !!v.colorBySurname;
+      renderIconPick();
+    }
+  }
+}
+function commit(patches){
+  if (!patches.length) return;
+  undoStack.push(patches);
+  if (undoStack.length > 100) undoStack.shift();
+  redoStack.length = 0;
+  for (const p of patches) applyPatch(p, "after");
+  if (!db) render(); else updateUndoUi();
+}
+function undo(){
+  const patches = undoStack.pop();
+  if (!patches) return;
+  redoStack.push(patches);
+  for (let i = patches.length-1; i >= 0; i--) applyPatch(patches[i], "before");
+  if (!db) render(); else updateUndoUi();
+}
+function redo(){
+  const patches = redoStack.pop();
+  if (!patches) return;
+  undoStack.push(patches);
+  for (const p of patches) applyPatch(p, "after");
+  if (!db) render(); else updateUndoUi();
+}
+function updateUndoUi(){
+  $("undoBtn").disabled = !undoStack.length;
+  $("redoBtn").disabled = !redoStack.length;
+}
+$("undoBtn").onclick = () => editable && undo();
+$("redoBtn").onclick = () => editable && redo();
+document.addEventListener("keydown", e => {
+  if (!editable) return;
+  if (e.target.closest("input,textarea")) return;
+  if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
+  else if ((e.ctrlKey||e.metaKey) && (e.key.toLowerCase() === "y" ||
+    (e.shiftKey && e.key.toLowerCase() === "z"))){ e.preventDefault(); redo(); }
+});
+
+/* patch builders */
+const guestBody = g => ({name:g.name, table:g.table, seat:g.seat, seatedAt:g.seatedAt});
+const guestPatch = (gid, after) => {
+  const cur = state.guests.get(gid);
+  return {kind:"guest", id:gid, before: cur ? guestBody(cur) : null, after};
+};
+const tablePatch = (tableId, nextCfg) => {
+  const t = TABLE_BY_ID[tableId];
+  const cur = state.tableCfg.get(tableId);
+  const next = {...(cur||{}), ...nextCfg};
+  if (!next.name) delete next.name;
+  if (!Number.isFinite(next.seats) || next.seats === t.defSeats) delete next.seats;
+  return {kind:"table", id:tableId, before: cur ? {...cur} : null,
+    after: Object.keys(next).length ? next : null};
+};
+
+/* ============ operations ============ */
+function opAddGuests(names){
+  commit(names.map(name =>
+    ({kind:"guest", id:newId(), before:null, after:{name, table:null, seat:null, seatedAt:null}})));
+}
+/* Seat at a specific slot. If someone is already there, they take the
+   dragged guest's old place (a swap) - or become unseated if the dragged
+   guest came from the unseated list. */
+function opSeatAt(gid, tableId, seatIdx){
+  const g = state.guests.get(gid);
+  if (!g || !TABLE_BY_ID[tableId]) return;
+  const p = placement(tableId);
+  if (seatIdx < 0 || seatIdx >= p.n) return;
+  const occupant = p.slots[seatIdx];
+  if (occupant === gid) return;
+  const prev = {table:g.table, seat:g.seat};
+  const patches = [guestPatch(gid, {name:g.name, table:tableId, seat:seatIdx, seatedAt:Date.now()})];
+  if (occupant){
+    const o = state.guests.get(occupant);
+    if (prev.table){
+      patches.push(guestPatch(occupant,
+        {name:o.name, table:prev.table, seat:prev.seat, seatedAt:Date.now()}));
+      toast(`Swapped: ${o.name} moved to ${tName(prev.table)}.`);
+    } else {
+      patches.push(guestPatch(occupant, {name:o.name, table:null, seat:null, seatedAt:null}));
+      toast(`${o.name} is now unseated.`);
+    }
+  }
+  commit(patches);
+}
+/* Drop on the table itself: first free seat. */
+function opSeatFirstFree(gid, tableId){
+  const g = state.guests.get(gid);
+  if (!g || g.table === tableId) return;
+  const p = placement(tableId);
+  const free = p.slots.indexOf(null);
+  if (free < 0){ toast(`${tName(tableId)} is full (${p.n} seats).`); return; }
+  commit([guestPatch(gid, {name:g.name, table:tableId, seat:free, seatedAt:Date.now()})]);
+}
+function opUnseat(gid){
+  const g = state.guests.get(gid);
+  if (!g || !g.table) return;
+  commit([guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null})]);
+}
+function opDelete(gid){
+  if (state.guests.has(gid)) commit([guestPatch(gid, null)]);
+}
+function opRename(tableId, name){
+  commit([tablePatch(tableId, {name:normName(name)})]);
+}
+function opSetSeats(tableId, n){
+  const t = TABLE_BY_ID[tableId];
+  n = Math.max(1, Math.min(t.maxSeats, n));
+  if (n === tSeats(tableId)){
+    if (n === t.maxSeats) toast(`${tName(tableId)} is at its maximum (${t.maxSeats} seats).`);
+    return;
+  }
+  const occ = occOf(tableId);
+  if (n < occ){ toast(`${tName(tableId)} has ${occ} guests seated - unseat someone first.`); return; }
+  const patches = [tablePatch(tableId, {seats:n})];
+  /* re-home anyone whose seat index no longer exists, planned in one pass
+     so two guests never land in the same slot */
+  const p = placement(tableId);
+  const occupants = [...p.slots.filter(Boolean), ...p.extras];
+  const taken = new Array(n).fill(false), kept = new Set();
+  for (const gid of occupants){
+    const s = state.guests.get(gid).seat;
+    if (Number.isInteger(s) && s >= 0 && s < n && !taken[s]){ taken[s] = true; kept.add(gid); }
+  }
+  for (const gid of occupants){
+    if (kept.has(gid)) continue;
+    const free = taken.indexOf(false);
+    if (free < 0) break;
+    taken[free] = true;
+    const g = state.guests.get(gid);
+    patches.push(guestPatch(gid, {name:g.name, table:tableId, seat:free, seatedAt:g.seatedAt}));
+  }
+  commit(patches);
+}
+const settingsBody = () => ({seatIcon, colorBySurname: colorFams});
+function opSetIcon(k){
+  if (!HELMETS[k] || k === seatIcon) return;
+  commit([{kind:"settings", id:"ui", before:settingsBody(),
+    after:{seatIcon:k, colorBySurname: colorFams}}]);
+}
+function opToggleFams(){
+  commit([{kind:"settings", id:"ui", before:settingsBody(),
+    after:{seatIcon, colorBySurname: !colorFams}}]);
+}
+
+/* ============ import ============ */
+function normName(s){ return String(s).trim().replace(/\s+/g," "); }
+const HEADER_RE = /^(name|names|guest|guests)$/i;
+function addNames(raw){
+  let names = raw.map(normName).filter(Boolean);
+  if (names.length && HEADER_RE.test(names[0])) names = names.slice(1);
+  if (!names.length){ toast("No names found."); return; }
+  const existing = new Set([...state.guests.values()].map(g=>g.name.toLowerCase()));
+  const fresh = [], dupes = [];
+  for (const n of names){
+    if (existing.has(n.toLowerCase())) dupes.push(n);
+    else { fresh.push(n); existing.add(n.toLowerCase()); }
+  }
+  if (fresh.length) opAddGuests(fresh);
+  if (dupes.length){
+    toast(`${fresh.length ? `Added ${fresh.length}. ` : ""}${dupes.length} already on the list: ` +
+      `${dupes.slice(0,4).join(", ")}${dupes.length>4?"…":""}`,
+      "Add anyway", () => opAddGuests(dupes));
+  } else if (fresh.length){
+    toast(`Added ${fresh.length} guest${fresh.length>1?"s":""}.`);
+  }
+}
+$("pasteAdd").onclick = () => {
+  if (!editable) return;
+  addNames($("pasteBox").value.split(/\r?\n/).map(l => l.split("\t")[0]));
+  $("pasteBox").value = "";
+};
+$("typeAdd").onclick = addTyped;
+$("typeBox").addEventListener("keydown", e => { if (e.key === "Enter") addTyped(); });
+function addTyped(){
+  if (!editable) return;
+  const v = $("typeBox").value;
+  if (normName(v)) addNames([v]);
+  $("typeBox").value = ""; $("typeBox").focus();
+}
+$("fileInput").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f || !editable) return;
+  if (typeof XLSX === "undefined"){
+    toast("The Excel reader didn't load - use Paste instead."); return;
+  }
+  try{
+    const wb = XLSX.read(await f.arrayBuffer(), {type:"array"});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1});
+    addNames(rows.map(r => String((r&&r[0]) ?? "")));
+  }catch(err){
+    toast("Couldn't read that file - is it a valid Excel/CSV file?");
+  }
+});
+$("importTabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  for (const x of $("importTabs").children) x.classList.toggle("on", x === b);
+  for (const t of ["paste","xlsx","type"])
+    $("tab-"+t).style.display = (b.dataset.tab === t) ? "" : "none";
+});
+$("search").addEventListener("input", renderChips);
+
+/* ============ rendering ============ */
+const NS = "http://www.w3.org/2000/svg";
+const C = {ink:"#23252B",muted:"#7A7D85",gold:"#A98442",goldSoft:"#F5EFE0",bronze:"#7A5F2C",
+  line:"#E8E7E3",fixture:"#F1F0EC",fixInk:"#9B9C93",wall:"#2B2C31",wallInk:"#C9CAC4",
+  danger:"#B33A2E"};
+const el = (tag, attrs, text) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text) e.textContent = text;
+  return e;
+};
+function rosterEditActive(){
+  const inp = $("cards").querySelector("input");
+  return inp && document.activeElement === inp;
+}
+function render(){
+  renderPlan(); renderChips();
+  if (!rosterEditActive()) renderRoster();
+  if (zoomTable && !zoomEditActive()) renderZoom();
+  renderCounts(); updateUndoUi();
+}
+
+/* ============ table zoom ============ */
+let zoomTable = null;
+function zoomEditActive(){
+  const inp = $("zTitle").querySelector("input");
+  return inp && document.activeElement === inp;
+}
+function openZoom(tid){
+  zoomTable = tid;
+  $("zoomModal").style.display = "flex";
+  renderZoom();
+}
+function closeZoom(){
+  zoomTable = null;
+  $("zoomModal").style.display = "none";
+}
+function zoomStep(dir){
+  if (!zoomTable) return;
+  const i = TABLES.findIndex(t => t.id === zoomTable);
+  zoomTable = TABLES[(i+dir+TABLES.length)%TABLES.length].id;
+  renderZoom();
+}
+function renderZoom(){
+  if (!zoomTable) return;
+  const t = TABLE_BY_ID[zoomTable];
+  const p = placement(zoomTable);
+  const n = p.slots.filter(Boolean).length + p.extras.length;
+  const isFull = n >= p.n;
+  $("zTitle").innerHTML =
+    `<span class="tname" data-rename="${t.id}" title="Rename table">${esc(tName(t.id))}</span>` +
+    `<span class="n">${n}/${p.n}</span>` +
+    `<span class="stepper"><button data-seatminus="${t.id}" title="One seat fewer">&minus;</button>` +
+    `<button data-seatplus="${t.id}" title="One seat more">+</button></span>`;
+  const counts = famCounts();
+  const slotHtml = i => {
+    const gid = p.slots[i];
+    if (!gid) return `<li class="zslot empty" data-drop-seat="${t.id}:${i}">` +
+      `<span class="seatno">${i+1}</span><span class="nm">Empty</span></li>`;
+    const g = state.guests.get(gid);
+    const c = famColor(g.name, counts);
+    return `<li class="zslot" data-drop-seat="${t.id}:${i}" data-guest="${gid}">` +
+      `<span class="grip">&#8942;&#8942;</span><span class="seatno">${i+1}</span>` +
+      `${c ? `<span class="fam" style="background:${c}"></span>` : ""}` +
+      `<span class="nm">${esc(g.name)}</span>` +
+      `<button class="del" data-unseat="${gid}" title="Unseat (back to the guest list)">&times;</button></li>`;
+  };
+  const strip = `<div class="ztable${isFull?" zfull":""}"><b>${esc(tName(t.id))}</b>` +
+    `<span>${n}/${p.n}</span></div>`;
+  let body;
+  if (t.o === "v"){
+    const L = Math.ceil(p.n/2), left = [], right = [];
+    for (let i=0;i<L;i++) left.push(slotHtml(i));
+    for (let i=L;i<p.n;i++) right.push(slotHtml(i));
+    body = `<div class="zcols"><ul class="zcol">${left.join("")}</ul>${strip}` +
+      `<ul class="zcol">${right.join("")}</ul></div>`;
+  } else {
+    const rows = [];
+    for (let i=0;i<p.n;i++) rows.push(slotHtml(i));
+    body = `<div class="zcols">${strip}<ul class="zcol">${rows.join("")}</ul></div>`;
+  }
+  if (p.extras.length){
+    body += `<ul class="zcol" style="margin-top:8px">` + p.extras.map(gid => {
+      const g = state.guests.get(gid);
+      return `<li class="zslot"><span class="seatno" style="color:var(--danger)">!</span>` +
+        `<span class="nm">${esc(g.name)}</span>` +
+        `<button class="del" data-unseat="${gid}" title="Unseat (back to the guest list)">&times;</button></li>`;
+    }).join("") + `</ul>`;
+  }
+  $("zBody").innerHTML = body;
+}
+$("zPrev").onclick = () => zoomStep(-1);
+$("zNext").onclick = () => zoomStep(1);
+$("zClose").onclick = closeZoom;
+$("zoomModal").addEventListener("click", e => {
+  if (e.target === $("zoomModal")) closeZoom();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape"){ closeZoom(); $("verModal").style.display = "none"; }
+});
+
+function renderCounts(){
+  const total = state.guests.size, un = unseated().length;
+  $("counts").innerHTML =
+    `<b>${total-un}</b> seated &middot; <b>${un}</b> unseated &middot; ` +
+    `<b>${total}</b> guests &middot; <b>${totalSeats()}</b> seats`;
+}
+
+/* seat slot coordinates for a table under its current seat count */
+function seatPoints(t, n){
+  const pts = [];
+  if (t.o === "v"){
+    const L = Math.ceil(n/2), R = n-L;
+    const spread = (cnt,i) => cnt === 1 ? t.y+t.h/2 : t.y+16 + i*(t.h-32)/(cnt-1);
+    for (let i=0;i<L;i++) pts.push([t.x+9, spread(L,i)]);
+    for (let i=0;i<R;i++) pts.push([t.x+t.w-9, spread(R,i)]);
+  } else {
+    for (let i=0;i<n;i++)
+      pts.push([n === 1 ? t.x+t.w/2 : t.x+12 + i*(t.w-24)/(n-1), t.y+t.h-9]);
+  }
+  return pts;
+}
+
+function renderPlan(){
+  const svg = $("plan");
+  svg.innerHTML = "";
+  svg.appendChild(el("rect",{x:0,y:0,width:875,height:860,fill:"none",stroke:C.ink,"stroke-width":2.5,rx:4}));
+  const fix = (x,y,w,h,label,dark) => {
+    svg.appendChild(el("rect",{x,y,width:w,height:h,fill:dark?C.wall:C.fixture,rx:3}));
+    if (label){
+      const t = el("text",{x:x+w/2,y:y+h/2,fill:dark?C.wallInk:C.fixInk,"font-size":13,
+        "text-anchor":"middle","dominant-baseline":"central","font-family":"Karla,sans-serif",
+        "letter-spacing":".08em"},label);
+      if (h > w*1.6) t.setAttribute("transform",`rotate(-90 ${x+w/2} ${y+h/2})`);
+      svg.appendChild(t);
+    }
+  };
+  fix(0,115,55,120,"");
+  fix(300,180,40,40,""); fix(545,180,40,40,""); fix(300,405,40,40,""); fix(545,405,40,40,"");
+  [[320,200],[565,200],[320,425],[565,425]].forEach(([x,y]) =>
+    svg.appendChild(el("text",{x,y:y+38,fill:C.fixInk,"font-size":10,"text-anchor":"middle",
+      "font-family":"Karla,sans-serif"},"PILLAR")));
+  svg.appendChild(el("rect",{x:352,y:238,width:180,height:155,fill:"none",stroke:C.fixInk,
+    "stroke-dasharray":"6 5",rx:6}));
+  svg.appendChild(el("text",{x:442,y:318,fill:C.fixInk,"font-size":14,"text-anchor":"middle",
+    "font-family":"Karla,sans-serif","letter-spacing":".14em"},"DANCEFLOOR"));
+  fix(375,587,145,38,"DJ");
+  fix(300,625,285,230,"WALL",true);
+  fix(195,625,105,230,"BAR");
+  fix(610,660,245,170,"LOUNGE POCKETS");
+  fix(18,705,47,138,"CAKE");
+
+  const counts = famCounts();
+  for (const t of TABLES){
+    const p = placement(t.id), n = p.slots.filter(Boolean).length + p.extras.length;
+    const isFull = n >= p.n;
+    const g = el("g",{cursor:"pointer"});
+    g.dataset.drop = t.id;
+    g.appendChild(el("rect",{x:t.x,y:t.y,width:t.w,height:t.h,rx:6,
+      fill:isFull?C.bronze:(n>0?C.goldSoft:"#FFFFFF"),
+      stroke:isFull?C.bronze:C.line,"stroke-width":1.5,class:"trect"}));
+    const pts = seatPoints(t, p.n);
+    pts.forEach(([cx,cy], i) => {
+      const gid = p.slots[i];
+      const guest = gid ? state.guests.get(gid) : null;
+      const fc = guest ? famColor(guest.name, counts) : null;
+      g.appendChild(el("circle",{cx,cy,r: fc ? 4.6 : 4.2,
+        fill: fc || (guest?(isFull?"#FFFFFF":C.gold):"#FFFFFF"),
+        stroke:guest?(isFull?"#FFFFFF":C.gold):C.muted,"stroke-width":1,
+        "pointer-events":"none"}));
+      /* larger invisible hit target: drop zone, drag source, hover-card anchor */
+      const hit = el("circle",{cx,cy,r:10,fill:"transparent",class:"seat-hit"});
+      hit.dataset.dropSeat = t.id+":"+i;
+      if (guest){
+        hit.dataset.guest = gid;
+        hit.dataset.name = guest.name;
+        hit.dataset.tbl = `${tName(t.id)} · seat ${i+1}`;
+      }
+      g.appendChild(hit);
+    });
+    /* table name + count: rotated along the axis on long tables so longer
+       names never overlap the seat dots */
+    const name = tName(t.id);
+    const tink = isFull?"#FFFFFF":C.ink;
+    const cink = isFull?"#FFFFFF":(n>0?C.bronze:C.muted);
+    const cx = t.x+t.w/2, cy = t.y+t.h/2;
+    if (t.o === "v"){
+      const shown = name.length > 13 ? name.slice(0,12)+"…" : name;
+      g.appendChild(el("text",{x:cx-7,y:cy,fill:tink,"font-size":11.5,
+        "text-anchor":"middle","dominant-baseline":"central",
+        "font-family":"Fraunces,Georgia,serif","font-weight":600,
+        transform:`rotate(-90 ${cx-7} ${cy})`,"pointer-events":"none"},shown));
+      g.appendChild(el("text",{x:cx+9,y:cy,fill:cink,"font-size":9.5,
+        "text-anchor":"middle","dominant-baseline":"central",
+        "font-family":"Karla,sans-serif","font-weight":700,
+        transform:`rotate(-90 ${cx+9} ${cy})`,"pointer-events":"none"},`${n}/${p.n}`));
+    } else {
+      const shown = name.length > 11 ? name.slice(0,10)+"…" : name;
+      g.appendChild(el("text",{x:cx,y:t.y+16,fill:tink,"font-size":10.5,
+        "text-anchor":"middle","font-family":"Fraunces,Georgia,serif","font-weight":600,
+        "pointer-events":"none"},shown));
+      g.appendChild(el("text",{x:cx,y:t.y+29,fill:cink,"font-size":9.5,
+        "text-anchor":"middle","font-family":"Karla,sans-serif","font-weight":700,
+        "pointer-events":"none"},`${n}/${p.n}`));
+    }
+    g.addEventListener("click", () => openZoom(t.id));
+    svg.appendChild(g);
+  }
+  svg.appendChild(el("text",{x:435,y:52,fill:C.muted,"font-size":12,"text-anchor":"middle",
+    "font-family":"Karla,sans-serif","letter-spacing":".14em"},"BRIDAL TABLE"));
+}
+
+let guestView = "all";
+$("listTabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-view]");
+  if (!b) return;
+  guestView = b.dataset.view;
+  for (const x of $("listTabs").children) x.classList.toggle("on", x === b);
+  renderChips();
+});
+/* the MASTER guest list: everyone, with where they sit; × removes the
+   guest everywhere (their seat included) */
+function renderChips(){
+  const q = $("search").value.trim().toLowerCase();
+  const counts = famCounts();
+  /* seat locations, computed once per render */
+  const loc = new Map();
+  for (const t of TABLES){
+    const p = placement(t.id);
+    p.slots.forEach((gid,i) => { if (gid) loc.set(gid, `${tName(t.id)} · ${i+1}`); });
+    for (const gid of p.extras) loc.set(gid, `${tName(t.id)} · !`);
+  }
+  let list = [...state.guests.entries()];
+  if (guestView === "unseated") list = list.filter(([,g]) => !g.table);
+  list.sort((a,b) => (!!a[1].table - !!b[1].table) || a[1].name.localeCompare(b[1].name));
+  if (q) list = list.filter(([,g]) => g.name.toLowerCase().includes(q));
+  $("listHdr").textContent = `Guest list (${state.guests.size})`;
+  $("listTabs").children[1].textContent = `Unseated (${unseated().length})`;
+  $("chips").innerHTML = list.length
+    ? list.map(([id,g]) => {
+        const c = famColor(g.name, counts);
+        return `<div class="chip" data-guest="${id}"` +
+          `${c ? ` style="border-left:4px solid ${c}"` : ""}>` +
+          `<span class="grip">&#8942;&#8942;</span>` +
+          `<span class="nm">${esc(g.name)}</span>` +
+          `<span class="loc">${g.table ? esc(loc.get(id)||"") : ""}</span>` +
+          `<button class="del" data-del="${id}" title="Remove from the guest list everywhere">&times;</button></div>`;
+      }).join("")
+    : `<p class="emptymsg">${state.guests.size
+        ? (q ? "No match." : "Everyone is seated. Bravo.")
+        : "No guests yet - add some above."}</p>`;
+}
+/* reset: confirm, save a safety version, then return every guest to
+   unassigned as ONE undoable step. Nobody is deleted; table names and
+   seat counts are untouched. */
+$("resetBtn").onclick = () => {
+  if (!editable) return;
+  const seatedN = [...state.guests.values()].filter(g => g.table).length;
+  if (!seatedN){ toast("Nobody is seated - nothing to reset."); return; }
+  toast(`Return all ${seatedN} seated guests to the unassigned list?`,
+    "Yes, reset seating", doReset);
+};
+async function doReset(){
+  if (db){ try{ await saveVersion("Auto - before reset"); }catch(_){} }
+  const patches = [];
+  for (const [gid, g] of state.guests)
+    if (g.table) patches.push(guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null}));
+  commit(patches);
+  toast("All seating cleared - everyone is back on the guest list. Undo with ↶.");
+}
+
+function renderRoster(){
+  const counts = famCounts();
+  const fam = name => {
+    const c = famColor(name, counts);
+    return c ? `<span class="fam" style="background:${c}"></span>` : "";
+  };
+  $("cards").innerHTML = TABLES.map(t => {
+    const p = placement(t.id);
+    const n = p.slots.filter(Boolean).length + p.extras.length;
+    const isFull = n >= p.n, over = p.extras.length > 0;
+    const rows = [];
+    p.slots.forEach((gid, i) => {
+      if (!gid) return;
+      const g = state.guests.get(gid);
+      rows.push(`<li class="rrow" data-guest="${gid}" data-drop-seat="${t.id}:${i}">` +
+        `<span class="grip">&#8942;&#8942;</span><span class="seatno">${i+1}</span>` +
+        `${fam(g.name)}<span class="nm">${esc(g.name)}</span>` +
+        `<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></li>`);
+    });
+    for (const gid of p.extras){
+      const g = state.guests.get(gid);
+      rows.push(`<li class="rrow" data-guest="${gid}">` +
+        `<span class="grip">&#8942;&#8942;</span><span class="seatno" style="color:var(--danger)">!</span>` +
+        `<span class="nm">${esc(g.name)}</span>` +
+        `<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></li>`);
+    }
+    const body = rows.length ? `<ul>${rows.join("")}</ul>` : `<p class="empty">Empty - awaiting guests</p>`;
+    return `<div class="card${isFull?" full":""}${over?" over":""}" data-table="${t.id}" data-drop="${t.id}">` +
+      `<h3><span class="tname" data-rename="${t.id}" title="Rename table">${esc(tName(t.id))}</span>` +
+      `<span class="n">${n}/${p.n}</span>` +
+      `<span class="stepper"><button data-seatminus="${t.id}" title="One seat fewer">&minus;</button>` +
+      `<button data-seatplus="${t.id}" title="One seat more">+</button></span></h3>${body}</div>`;
+  }).join("") + (unseated().length
+    ? `<div class="card" data-drop="unseat"><h3>Unseated<span class="n">${unseated().length}</span></h3>` +
+      `<ul>${unseated().map(([id,g]) =>
+        `<li class="rrow" data-guest="${id}"><span class="grip">&#8942;&#8942;</span>` +
+        `${fam(g.name)}<span class="nm">${esc(g.name)}</span></li>`).join("")}</ul></div>`
+    : "");
+}
+
+/* delete / unseat / rename / seat-count / helmet clicks (delegated) */
+document.addEventListener("click", e => {
+  if (!editable) return;
+  const del = e.target.closest("[data-del]");
+  if (del){ opDelete(del.dataset.del); return; }
+  const un = e.target.closest("[data-unseat]");
+  if (un){ opUnseat(un.dataset.unseat); return; }
+  const ic = e.target.closest("[data-icon]");
+  if (ic){ opSetIcon(ic.dataset.icon); return; }
+  const minus = e.target.closest("[data-seatminus]");
+  if (minus){ opSetSeats(minus.dataset.seatminus, tSeats(minus.dataset.seatminus)-1); return; }
+  const plus = e.target.closest("[data-seatplus]");
+  if (plus){ opSetSeats(plus.dataset.seatplus, tSeats(plus.dataset.seatplus)+1); return; }
+  const rn = e.target.closest("[data-rename]");
+  if (rn) startRename(rn);
+});
+function startRename(span){
+  const tableId = span.dataset.rename;
+  const input = document.createElement("input");
+  input.type = "text"; input.value = tName(tableId); input.maxLength = 24;
+  span.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const finish = save => {
+    if (done) return; done = true;
+    if (save && input.value.trim() && input.value.trim() !== tName(tableId))
+      opRename(tableId, input.value);
+    renderRoster();   /* always rebuild, so the input can never be stranded */
+    renderZoom();
+  };
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+/* ============ drag and drop (pointer events) ============ */
+/* Mouse: drag from anywhere on a chip/row/filled seat. Touch: drag starts
+   only from the ⋮⋮ grip or a seat dot, so a finger can still scroll the
+   lists. */
+let drag = null; // {gid, pid, startX, startY, active}
+document.addEventListener("pointerdown", e => {
+  if (!editable || drag) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (e.target.closest("button,input,textarea")) return;
+  const src = e.target.closest("[data-guest]");
+  if (!src) return;
+  const gid = src.dataset ? src.dataset.guest : src.getAttribute("data-guest");
+  if (!gid) return;
+  if (e.pointerType !== "mouse" && !e.target.closest(".grip,.seat-hit")) return;
+  drag = {gid, pid:e.pointerId, startX:e.clientX, startY:e.clientY, active:false};
+});
+document.addEventListener("pointermove", e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  if (e.pointerType === "mouse" && e.buttons === 0){ cancelDrag(); return; }
+  if (!drag.active){
+    if (Math.hypot(e.clientX-drag.startX, e.clientY-drag.startY) < 7) return;
+    drag.active = true;
+    drag.lastX = e.clientX;
+    document.body.classList.add("dragging");
+    const g = state.guests.get(drag.gid);
+    $("gname").textContent = g ? g.name : "";
+    $("ghost").style.display = "block";
+    hideTip();
+  }
+  e.preventDefault();
+  const ghost = $("ghost");
+  const dx = e.clientX - drag.lastX;
+  if (Math.abs(dx) > 3){
+    ghost.style.setProperty("--face", dx < 0 ? -1 : 1);
+    drag.lastX = e.clientX;
+  }
+  /* the legionary runs beside the pointer, name held aloft */
+  ghost.style.left = (e.clientX + 14) + "px";
+  ghost.style.top = (e.clientY - 42) + "px";
+  highlightDrop(dropAt(e.clientX, e.clientY));
+});
+document.addEventListener("pointerup", e => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const wasActive = drag.active, gid = drag.gid;
+  cancelDrag();
+  if (!wasActive) return;
+  const target = dropAt(e.clientX, e.clientY);
+  if (!target) return;
+  if (target.type === "unseat") opUnseat(gid);
+  else if (target.type === "seat") opSeatAt(gid, target.table, target.seat);
+  else opSeatFirstFree(gid, target.table);
+});
+document.addEventListener("pointercancel", e => {
+  if (drag && e.pointerId === drag.pid) cancelDrag();
+});
+function cancelDrag(){
+  const hadHighlight = drag && drag.active;
+  drag = null;
+  document.body.classList.remove("dragging");
+  $("ghost").style.display = "none";
+  highlightDrop(null);
+  if (hadHighlight) renderPlan();  /* restores every table's true stroke */
+}
+function dropAt(x, y){
+  const hit = document.elementFromPoint(x, y);
+  if (!hit) return null;
+  const seatEl = hit.closest("[data-drop-seat]");
+  if (seatEl){
+    const raw = seatEl.dataset ? seatEl.dataset.dropSeat : seatEl.getAttribute("data-drop-seat");
+    const [table, idx] = raw.split(":");
+    return {type:"seat", table, seat:+idx, el:seatEl};
+  }
+  const zone = hit.closest("[data-drop]");
+  if (!zone) return null;
+  const id = zone.dataset ? zone.dataset.drop : zone.getAttribute("data-drop");
+  return id === "unseat" ? {type:"unseat"} : {type:"table", table:id};
+}
+let lastCue = null, lastSeatCue = null;
+function highlightDrop(target){
+  $("guestPanel").classList.toggle("dropcue", !!target && target.type === "unseat");
+  const tableId = target && target.table ? target.table : null;
+  if (lastCue && lastCue !== tableId){
+    const r = document.querySelector(`g[data-drop="${lastCue}"] .trect`);
+    if (r) r.setAttribute("stroke-width","1.5");
+    const card = document.querySelector(`.card[data-table="${lastCue}"]`);
+    if (card) card.classList.remove("dropcue");
+  }
+  if (tableId){
+    const r = document.querySelector(`g[data-drop="${tableId}"] .trect`);
+    if (r){ r.setAttribute("stroke", C.gold); r.setAttribute("stroke-width","3"); }
+    const card = document.querySelector(`.card[data-table="${tableId}"]`);
+    if (card) card.classList.add("dropcue");
+  }
+  lastCue = tableId;
+  if (lastSeatCue){
+    if (lastSeatCue.tagName === "circle") lastSeatCue.setAttribute("stroke","transparent");
+    else lastSeatCue.classList.remove("dropcue");
+    lastSeatCue = null;
+  }
+  if (target && target.type === "seat" && target.el){
+    if (target.el.tagName === "circle"){
+      target.el.setAttribute("stroke", C.danger);
+      target.el.setAttribute("stroke-width","2");
+    } else target.el.classList.add("dropcue");
+    lastSeatCue = target.el;
+  }
+}
+
+/* ============ seat-card helmet picker ============ */
+const HELMETS = {
+  centurion: `<svg viewBox="0 0 52 46" aria-hidden="true">
+    <path d="M11 14 Q26 -7 42 12 L39 16 Q26 2 15 17 Z" fill="#B33A2E"/>
+    <path d="M42 12 q5 5 4 13 l-5 -4 q1 -5 -2 -6 Z" fill="#B33A2E"/>
+    <path d="M12 26 Q12 10 26 10 Q40 10 40 26 L40 27 Q45 27 46 32 L40 32 Q39 29 37 29 L14 29 Z"
+      fill="#C9A227" stroke="#A98442" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M8 25 h10 l-2 4 h-8 Z" fill="#A98442"/>
+    <path d="M14 30 h9 v8 q0 4 -4.5 4 q-4.5 0 -4.5 -4 Z" fill="#C9A227"
+      stroke="#A98442" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
+  gallic: `<svg viewBox="0 0 52 46" aria-hidden="true">
+    <path d="M26 10 Q25 -2 37 -3 Q32 1 32 6 Q32 10 29 11 Z" fill="#B33A2E"/>
+    <path d="M12 26 Q12 10 26 10 Q40 10 40 26 L40 27 Q45 27 46 32 L40 32 Q39 29 37 29 L14 29 Z"
+      fill="#AEB4BC" stroke="#7A828C" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M12 22 Q26 16 40 22" fill="none" stroke="#C9A227" stroke-width="2"/>
+    <path d="M8 25 h10 l-2 4 h-8 Z" fill="#C9A227"/>
+    <path d="M14 30 h9 v8 q0 4 -4.5 4 q-4.5 0 -4.5 -4 Z" fill="#AEB4BC"
+      stroke="#7A828C" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
+  lineart: `<svg viewBox="0 0 52 46" aria-hidden="true">
+    <path d="M11 14 Q26 -7 42 12 L39 16 Q26 2 15 17 Z" fill="none"
+      stroke="#B33A2E" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M12 26 Q12 10 26 10 Q40 10 40 26 L40 27 Q45 27 46 32 L40 32 Q39 29 37 29 L14 29 Z"
+      fill="none" stroke="#A98442" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M8 25 h10 l-2 4 h-8 Z" fill="none" stroke="#A98442" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M14 30 h9 v8 q0 4 -4.5 4 q-4.5 0 -4.5 -4 Z" fill="none"
+      stroke="#A98442" stroke-width="1.4" stroke-linejoin="round"/></svg>`,
+  praetorian: `<svg viewBox="0 0 52 46" aria-hidden="true">
+    <path d="M15 12 Q26 -9 39 11 L35 14 Q26 1 19 15 Z" fill="#2B2C31"/>
+    <path d="M13 15 Q26 4 41 14" fill="none" stroke="#C9A227" stroke-width="2.2"/>
+    <path d="M12 26 Q12 10 26 10 Q40 10 40 26 L40 27 Q45 27 46 32 L40 32 Q39 29 37 29 L14 29 Z"
+      fill="#8C6A2F" stroke="#6B5124" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M12 23 Q26 18 40 23" fill="none" stroke="#C9A227" stroke-width="1.6"/>
+    <path d="M8 25 h10 l-2 4 h-8 Z" fill="#C9A227"/>
+    <path d="M14 30 h9 v8 q0 4 -4.5 4 q-4.5 0 -4.5 -4 Z" fill="#8C6A2F"
+      stroke="#6B5124" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
+};
+const HELMET_TITLES = {centurion:"Centurion", gallic:"Gallic steel",
+  lineart:"Line art", praetorian:"Praetorian"};
+function renderIconPick(){
+  $("iconPick").innerHTML = Object.keys(HELMETS).map(k =>
+    `<button data-icon="${k}" class="${k===seatIcon?"on":""}" title="${HELMET_TITLES[k]}">${HELMETS[k]}</button>`).join("");
+  $("tipIcon").innerHTML = HELMETS[seatIcon];
+  $("famBtn").classList.toggle("on", colorFams);
+}
+$("famBtn").onclick = () => editable && opToggleFams();
+
+/* ============ seat hover card (hover on desktop, tap on touch) ============ */
+const tip = $("tip");
+let tipTimer = null;
+function showTipFor(elWith){
+  $("tipName").textContent = elWith.dataset.name;
+  $("tipTbl").textContent = elWith.dataset.tbl;
+  tip.style.display = "block";
+  const r = elWith.getBoundingClientRect(), tw = tip.offsetWidth;
+  tip.style.left = Math.max(8, Math.min(innerWidth-tw-8, r.left+r.width/2-tw/2))+"px";
+  tip.style.top = Math.max(8, r.top-tip.offsetHeight-10)+"px";
+}
+function hideTip(){ tip.style.display = "none"; clearTimeout(tipTimer); tipTimer = null; }
+$("plan").addEventListener("pointerover", e => {
+  if (drag && drag.active) return;
+  if (e.pointerType !== "mouse") return;
+  if (e.target.dataset && e.target.dataset.name) showTipFor(e.target);
+  else if (!tipTimer) hideTip();
+});
+$("plan").addEventListener("pointerout", e => {
+  if (e.pointerType !== "mouse") return;
+  if (!tipTimer) hideTip();
+});
+$("plan").addEventListener("click", e => {
+  /* tap on touch: pin the card for a moment */
+  if (e.target.dataset && e.target.dataset.name){
+    showTipFor(e.target);
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(hideTip, 2500);
+  }
+});
+
+/* ============ version history ============ */
+function snapshotState(label){
+  return {
+    label: label || "Untitled",
+    at: Date.now(),
+    guests: Object.fromEntries([...state.guests.entries()].map(([id,g]) => [id, guestBody(g)])),
+    tables: Object.fromEntries([...state.tableCfg.entries()].map(([id,c]) => [id, {...c}])),
+    seatIcon,
+    colorBySurname: colorFams,
+  };
+}
+async function saveVersion(label){
+  if (!db) return null;
+  const id = newId();
+  await db.doc("versions/"+id).set(snapshotState(label));
+  /* prune to the newest 30 */
+  try{
+    const all = await db.collection("versions").orderBy("at","desc").get();
+    for (const d0 of all.docs.slice(30)) db.doc("versions/"+d0.id).delete();
+  }catch(_){}
+  return id;
+}
+async function openVersions(){
+  $("verModal").style.display = "flex";
+  $("verList").innerHTML = `<p class="emptymsg">Loading&hellip;</p>`;
+  try{
+    const all = await db.collection("versions").orderBy("at","desc").get();
+    $("verList").innerHTML = all.empty
+      ? `<p class="emptymsg">No versions saved yet.</p>`
+      : all.docs.map(d0 => {
+          const b = d0.data();
+          const when = new Date(b.at).toLocaleString(undefined,
+            {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"});
+          const count = Object.keys(b.guests||{}).length;
+          return `<div class="verrow"><div class="vl"><b>${esc(b.label||"Untitled")}</b>` +
+            `<span>${when} &middot; ${count} guests</span></div>` +
+            `<button data-restore="${d0.id}">Restore</button></div>`;
+        }).join("");
+  }catch(_){
+    $("verList").innerHTML = `<p class="emptymsg">Couldn't load versions - try again.</p>`;
+  }
+}
+/* sanitise snapshot/backup bodies so a stale or hand-edited file cannot
+   inject junk state */
+function cleanGuestBody(v){
+  if (!v || typeof v !== "object" || !normName(String(v.name ?? ""))) return null;
+  return {name: normName(String(v.name)),
+    table: TABLE_BY_ID[v.table] ? v.table : null,
+    seat: Number.isInteger(v.seat) ? v.seat : null,
+    seatedAt: Number.isFinite(v.seatedAt) ? v.seatedAt : null};
+}
+function cleanCfg(v){
+  if (!v || typeof v !== "object") return null;
+  const c = {};
+  if (v.name && typeof v.name === "string") c.name = normName(v.name).slice(0,24);
+  if (Number.isFinite(v.seats)) c.seats = v.seats;
+  return Object.keys(c).length ? c : null;
+}
+/* diff current state -> snapshot, as one undoable patch set */
+function snapshotDiff(b){
+  const patches = [];
+  const gIds = new Set([...state.guests.keys(), ...Object.keys(b.guests||{})]);
+  for (const id of gIds){
+    if (!/^[A-Za-z0-9_\-.~:@+]{1,200}$/.test(id)) continue;
+    const after = cleanGuestBody((b.guests||{})[id]);
+    const cur = state.guests.get(id);
+    if (JSON.stringify(cur ? guestBody(cur) : null) !== JSON.stringify(after))
+      patches.push({kind:"guest", id, before: cur ? guestBody(cur) : null, after});
+  }
+  for (const t of TABLES){
+    const after = cleanCfg((b.tables||{})[t.id]);
+    const cur = state.tableCfg.get(t.id) || null;
+    if (JSON.stringify(cur ? cleanCfg(cur) : null) !== JSON.stringify(after))
+      patches.push({kind:"table", id:t.id, before: cur ? {...cur} : null, after});
+  }
+  /* settings travel in version snapshots but not in seating-only backups -
+     only diff them when the snapshot carries them */
+  if ("seatIcon" in b || "colorBySurname" in b){
+    const snapSet = {seatIcon: (b.seatIcon && HELMETS[b.seatIcon]) ? b.seatIcon : seatIcon,
+      colorBySurname: !!b.colorBySurname};
+    if (JSON.stringify(settingsBody()) !== JSON.stringify(snapSet))
+      patches.push({kind:"settings", id:"ui", before:settingsBody(), after:snapSet});
+  }
+  return patches;
+}
+async function applySnapshot(b, what){
+  await saveVersion(`Auto - before ${what}`);
+  const patches = snapshotDiff(b);
+  $("verModal").style.display = "none";
+  if (!patches.length){ toast("Already identical - nothing to change."); return; }
+  commit(patches);
+  toast(`Restored ${what} (${patches.length} changes). Undo with the ↶ button.`);
+}
+async function restoreVersion(vid){
+  const snap = await db.doc("versions/"+vid).get();
+  if (!snap.exists){ toast("That version no longer exists."); return; }
+  const b = snap.data();
+  await applySnapshot(b, `"${b.label||"Untitled"}"`);
+}
+
+/* ---- backup to file / restore from file ---- */
+async function downloadBackup(){
+  if (!downloads){ toast("File downloads aren't available in this view."); return; }
+  /* seating data only: the guests, where they sit, and the table set-up */
+  const data = {
+    app: "wedding-seating-planner",
+    exportedAt: new Date().toISOString(),
+    guests: Object.fromEntries([...state.guests.entries()].map(([id,g]) => [id, guestBody(g)])),
+    tables: Object.fromEntries([...state.tableCfg.entries()].map(([id,c]) => [id, {...c}])),
+  };
+  try{
+    await downloads.save({
+      filename:`wedding-seating-backup-${new Date().toISOString().slice(0,10)}.json`,
+      data:new Blob([JSON.stringify(data, null, 2)])});
+    toast("Backup saved.");
+  }catch(err){ downloadError(err); }
+}
+$("bakSave").onclick = downloadBackup;
+$("bakFile").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f || !editable) return;
+  let data;
+  try{ data = JSON.parse(await f.text()); }
+  catch(_){ toast("That file isn't valid JSON."); return; }
+  if (!data || data.app !== "wedding-seating-planner" || typeof data.guests !== "object"){
+    toast("That doesn't look like a backup from this planner."); return;
+  }
+  const n = Object.keys(data.guests||{}).length;
+  const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString() : "unknown date";
+  toast(`Replace the current plan with the backup from ${when} (${n} guests)?`,
+    "Yes, restore", () => applySnapshot(data, "the backup"));
+});
+$("verBtn").onclick = () => editable && db && openVersions();
+$("verClose").onclick = () => $("verModal").style.display = "none";
+$("verModal").addEventListener("click", e => {
+  if (e.target === $("verModal")) $("verModal").style.display = "none";
+  const r = e.target.closest("[data-restore]");
+  if (r && editable) restoreVersion(r.dataset.restore);
+});
+$("verSave").onclick = async () => {
+  if (!editable || !db) return;
+  const label = normName($("verLabel").value) || new Date().toLocaleString();
+  $("verLabel").value = "";
+  try{ await saveVersion(label); toast(`Version "${label}" saved.`); openVersions(); }
+  catch(_){ toast("Couldn't save a version - try again."); }
+};
+
+/* ============ exports ============ */
+function seatingRows(){
+  const rows = [["Table","Seat","Guest"]];
+  for (const t of TABLES){
+    const p = placement(t.id);
+    p.slots.forEach((gid,i) => {
+      if (gid) rows.push([tName(t.id), i+1, state.guests.get(gid).name]);
+    });
+    for (const gid of p.extras) rows.push([tName(t.id), "-", state.guests.get(gid).name]);
+  }
+  for (const [,g] of unseated()) rows.push(["Unseated", "", g.name]);
+  return rows;
+}
+$("btnXlsx").onclick = async () => {
+  if (typeof XLSX === "undefined"){ toast("The Excel library didn't load - try refreshing."); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(seatingRows()), "Seating");
+  const buf = XLSX.write(wb, {bookType:"xlsx", type:"array"});
+  try{
+    await downloads.save({filename:"wedding-seating.xlsx", data:buf});
+    toast("Excel file saved.");
+  }catch(err){ downloadError(err); }
+};
+$("btnPdf").onclick = async () => {
+  if (!window.jspdf){ toast("The PDF library didn't load - try refreshing."); return; }
+  const doc = new jspdf.jsPDF({orientation:"landscape", unit:"pt", format:"a4"});
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+
+  /* page 1: floor plan */
+  doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.text("Wedding Seating - Floor Plan (Option B)", 40, 36);
+  const s = Math.min((W-80)/875, (H-90)/860), ox = 40, oy = 52;
+  const R = (x,y,w,h,style) => doc.rect(ox+x*s, oy+y*s, w*s, h*s, style);
+  doc.setDrawColor(35,37,43); doc.setLineWidth(1.2); R(0,0,875,860,"S");
+  doc.setFillColor(241,240,236); doc.setDrawColor(232,231,227);
+  R(0,115,55,120,"F");
+  R(300,180,40,40,"F"); R(545,180,40,40,"F"); R(300,405,40,40,"F"); R(545,405,40,40,"F");
+  R(375,587,145,38,"F"); R(195,625,105,230,"F"); R(610,660,245,170,"F"); R(18,705,47,138,"F");
+  doc.setFillColor(43,44,49); R(300,625,285,230,"F");
+  doc.setFontSize(7); doc.setTextColor(155,156,147); doc.setFont("helvetica","normal");
+  const label = (t,x,y) => doc.text(t, ox+x*s, oy+y*s, {align:"center"});
+  label("PILLAR",320,205); label("PILLAR",565,205); label("PILLAR",320,430); label("PILLAR",565,430);
+  label("DANCEFLOOR",442,320); label("DJ",447,610); label("BAR",247,745); label("LOUNGE",732,748);
+  label("CAKE",41,778);
+  doc.setTextColor(255,255,255); label("WALL",442,745);
+  doc.setTextColor(122,125,133); label("BRIDAL TABLE",435,50);
+  for (const t of TABLES){
+    const p = placement(t.id), n = p.slots.filter(Boolean).length + p.extras.length;
+    const isFull = n >= p.n;
+    if (isFull) doc.setFillColor(122,95,44); else if (n>0) doc.setFillColor(245,239,224);
+    else doc.setFillColor(255,255,255);
+    doc.setDrawColor(isFull?122:200, isFull?95:199, isFull?44:195);
+    R(t.x,t.y,t.w,t.h,"FD");
+    doc.setTextColor(isFull?255:35, isFull?255:37, isFull?255:43);
+    doc.setFont("helvetica","bold"); doc.setFontSize(8);
+    if (t.o === "v"){
+      doc.text(tName(t.id).slice(0,14), ox+(t.x+t.w/2-3)*s, oy+(t.y+t.h/2)*s,
+        {align:"center", angle:90});
+      doc.setFont("helvetica","normal"); doc.setFontSize(7);
+      doc.text(`${n}/${p.n}`, ox+(t.x+t.w/2+8)*s, oy+(t.y+t.h/2)*s, {align:"center", angle:90});
+    } else {
+      doc.text(tName(t.id).slice(0,12), ox+(t.x+t.w/2)*s, oy+(t.y+16)*s, {align:"center"});
+      doc.setFont("helvetica","normal"); doc.setFontSize(7);
+      doc.text(`${n}/${p.n}`, ox+(t.x+t.w/2)*s, oy+(t.y+28)*s, {align:"center"});
+    }
+  }
+
+  /* page 2+: roster with seat numbers */
+  doc.addPage();
+  doc.setFont("helvetica","bold"); doc.setFontSize(16); doc.setTextColor(35,37,43);
+  doc.text("Wedding Seating - Roster", 40, 36);
+  const colW = (W-80)/4;
+  let col = 0, y = 64;
+  const line = (txt, bold, size) => {
+    if (y > H-40){ col++; y = 64;
+      if (col > 3){ doc.addPage(); col = 0;
+        doc.setFont("helvetica","bold"); doc.setFontSize(16);
+        doc.text("Roster (continued)", 40, 36); }
+    }
+    doc.setFont("helvetica", bold?"bold":"normal"); doc.setFontSize(size);
+    doc.text(txt.length > 34 ? txt.slice(0,33)+"…" : txt, 40+col*colW, y);
+    y += size*1.45;
+  };
+  for (const t of TABLES){
+    const p = placement(t.id), n = p.slots.filter(Boolean).length + p.extras.length;
+    line(`${tName(t.id)}  (${n}/${p.n})`, true, 11);
+    let any = false;
+    p.slots.forEach((gid,i) => {
+      if (gid){ line(`${i+1}. ${state.guests.get(gid).name}`, false, 10); any = true; }
+    });
+    for (const gid of p.extras){ line(`-  ${state.guests.get(gid).name}`, false, 10); any = true; }
+    if (!any) line("Empty", false, 10);
+    y += 6;
+  }
+  if (unseated().length){
+    line(`Unseated  (${unseated().length})`, true, 11);
+    for (const [,g] of unseated()) line(g.name, false, 10);
+  }
+  try{
+    await downloads.save({filename:"wedding-seating.pdf", data:doc.output("arraybuffer")});
+    toast("PDF saved.");
+  }catch(err){ downloadError(err); }
+};
+function downloadError(err){
+  if (err && err.code === "declined") return;
+  if (err && err.code === "rate_limited") toast("One download at a time - try again in a moment.");
+  else toast("Couldn't save the file - please try again.");
+}
+
+/* ============ boot: connect db + downloads + viewer identity ============ */
+render();
+renderIconPick();
+(async () => {
+  const use = name => (typeof claude !== "undefined" && claude && claude.use)
+    ? claude.use(name) : Promise.resolve(null);
+  const [d, dl] = await Promise.all([use("db"), use("downloads")]);
+  downloads = dl;
+  if (dl){ $("btnXlsx").style.display = "inline-block"; $("btnPdf").style.display = "inline-block"; }
+  else $("savestate").title = "File exports are unavailable in this view";
+  if (!d){
+    const ss = $("savestate");
+    ss.textContent = "Not saving - changes are lost on refresh";
+    ss.classList.add("bad");
+    return;
+  }
+  db = d;
+  /* Writability probe: the database rules allow writes only for editors
+     (write: "admin"). A rule-blocked write rejects invalid_argument, which
+     tells us this view is read-only; transient errors do not. */
+  try{
+    await db.doc("settings/writeprobe").set({at:Date.now()});
+  }catch(err){
+    if (err && err.code === "invalid_argument"){
+      editable = false;
+      document.body.classList.add("readonly");
+    }
+  }
+  $("savestate").textContent = editable ? "Saved automatically" : "View only";
+  if (editable) $("verBtn").style.display = "inline-block";
+  db.collection("guests").onSnapshot(snap => {
+    state.guests = new Map(snap.docs.map(d0 => {
+      const b = d0.data();
+      return [d0.id, {name:String(b.name??""), table:b.table??null,
+        seat:Number.isInteger(b.seat)?b.seat:null, seatedAt:b.seatedAt??null}];
+    }));
+    render();
+  }, e => {
+    const ss = $("savestate");
+    ss.textContent = "Connection lost - refresh the page";
+    ss.classList.add("bad");
+  });
+  db.collection("tables").onSnapshot(snap => {
+    state.tableCfg = new Map(snap.docs.map(d0 => {
+      const b = d0.data();
+      const cfg = {};
+      if (b.name) cfg.name = String(b.name);
+      if (Number.isFinite(b.seats)) cfg.seats = b.seats;
+      return [d0.id, cfg];
+    }));
+    render();
+  }, () => {});
+  db.doc("settings/ui").onSnapshot(s => {
+    const b = s.exists ? s.data() : null;
+    if (b && HELMETS[b.seatIcon]) seatIcon = b.seatIcon;
+    const cf = !!(b && b.colorBySurname);
+    const changed = cf !== colorFams;
+    colorFams = cf;
+    renderIconPick();
+    if (changed) render();
+  }, () => {});
+})();
+</script>
