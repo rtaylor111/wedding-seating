@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <meta name="robots" content="noindex">
 <title>Wedding Seating Planner</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Karla:wght@400;500;700&display=swap">
@@ -257,7 +257,7 @@
   .modal{position:fixed;inset:0;z-index:40;background:rgba(35,37,43,.35);
     display:none;align-items:center;justify-content:center;padding:20px;}
   .modal .panel{background:#fff;border-radius:14px;max-width:460px;width:100%;
-    max-height:80vh;display:flex;flex-direction:column;padding:18px;gap:12px;
+    max-height:80vh;max-height:80dvh;display:flex;flex-direction:column;padding:18px;gap:12px;
     box-shadow:0 18px 50px rgba(35,37,43,.3);}
   .modal h2{font-size:18px;}
   .mrow{display:flex;gap:8px;align-items:center;}
@@ -351,7 +351,11 @@
     #peekPills .chip{flex:0 0 auto;}
     body:not([data-drawer="peek"]) #peekPills{display:none;}
     body[data-drawer="peek"] .guests > :not(#drawerBar){display:none !important;}
-    .guests h2, #importTabs, #tab-paste, #tab-xlsx, #tab-type{display:none;}
+    /* hide the import UI only while it sits IN the drawer - once dockImports()
+       moves it to the Add-guests sheet it must show (review blocker: the rule
+       was keyed on ids and followed the nodes into the sheet) */
+    .guests > h2, .guests #importTabs, .guests #tab-paste,
+    .guests #tab-xlsx, .guests #tab-type{display:none;}
     .chips{flex:1;max-height:none;touch-action:pan-y;}
     .guests.dropcue #drawerBar .peekrow{color:var(--gold);}
 
@@ -1379,6 +1383,14 @@ function boxAspect(){
   return r.width > 0 ? r.height / r.width : VIEW0.h / VIEW0.w;
 }
 let MAXW = VIEW0.w;
+/* when the view is taller than the plan, centre the plan in the VISIBLE band
+   above the drawer instead of pinning it to the top (review: 400px of dead
+   canvas below the plan on tall phones) */
+function fitOffsetY(viewH){
+  const r = $("plan").getBoundingClientRect();
+  const insetUnits = r.height > 0 ? drawerInsetPx() / r.height * viewH : 0;
+  return VIEW0.y - Math.max(0, (viewH - VIEW0.h - insetUnits) / 2);
+}
 function clampView(){
   view.w = Math.max(160, Math.min(MAXW, view.w));
   view.h = view.w * boxAspect();
@@ -1388,7 +1400,7 @@ function clampView(){
   view.x = maxX < minX ? VIEW0.x - (view.w - VIEW0.w)/2
     : Math.max(minX, Math.min(maxX, view.x));
   const minY = VIEW0.y, maxY = VIEW0.y + VIEW0.h - view.h;
-  view.y = maxY < minY ? VIEW0.y : Math.max(minY, Math.min(maxY, view.y));
+  view.y = maxY < minY ? fitOffsetY(view.h) : Math.max(minY, Math.min(maxY, view.y));
 }
 /* fit = whole plan visible in the part of the map the drawer doesn't cover */
 function drawerInsetPx(){
@@ -1404,7 +1416,7 @@ function fitView(){
   const s = Math.min(r.width / VIEW0.w, availH / VIEW0.h);
   const w = r.width / s, h = r.height / s;
   MAXW = Math.max(VIEW0.w, w);
-  view = {x: VIEW0.x - (w - VIEW0.w)/2, y: VIEW0.y, w, h};
+  view = {x: VIEW0.x - (w - VIEW0.w)/2, y: fitOffsetY(h), w, h};
   applyView();
 }
 function zoomAt(cx, cy, factor){
@@ -1682,9 +1694,14 @@ dockImports();
 /* drawer grab-handle: tap toggles, swipe snaps through peek/half/tall */
 let dbar = null;
 $("drawerBar").addEventListener("pointerdown", e => {
+  /* a press on a peek pill is a guest drag, never a handle swipe - implicit
+     touch capture would otherwise deliver the drop's pointerup back here and
+     fling the drawer open (review blocker) */
+  if (e.target.closest("[data-guest]")) return;
   dbar = {y: e.clientY, pid: e.pointerId};
 });
 $("drawerBar").addEventListener("pointerup", e => {
+  if (drag){ dbar = null; return; }
   if (!dbar || e.pointerId !== dbar.pid){ dbar = null; return; }
   const dy = e.clientY - dbar.y;
   dbar = null;
