@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Transport Test</title>
+<style>
+  body{margin:0;background:#fff;color:#23252B;font:15px/1.5 system-ui,sans-serif;
+    max-width:760px;margin-inline:auto;padding:28px 16px;}
+  h1{font-size:21px;margin:0 0 4px;}
+  p{color:#7A7D85;font-size:13.5px;}
+  label{display:block;font-weight:700;font-size:13px;margin:12px 0 4px;}
+  input{width:100%;padding:9px 11px;border:1px solid #E8E7E3;border-radius:8px;font:14px monospace;}
+  button{margin-top:14px;border:0;background:#A98442;color:#fff;border-radius:8px;
+    padding:10px 16px;font:700 14px system-ui;cursor:pointer;}
+  button.warn{background:#fff;color:#B33A2E;border:1px solid #B33A2E;margin-left:8px;}
+  #log{margin-top:18px;display:flex;flex-direction:column;gap:6px;}
+  .row{display:flex;gap:10px;align-items:baseline;border:1px solid #E8E7E3;border-radius:8px;
+    padding:8px 12px;font-size:13.5px;}
+  .ok{border-left:4px solid #4C8B57;}
+  .bad{border-left:4px solid #B33A2E;background:#FDF4F3;}
+  .row b{min-width:52px;}
+  .row .ms{margin-left:auto;color:#7A7D85;font-variant-numeric:tabular-nums;}
+  code{background:#F6F6F4;padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<h1>Seating backend transport test</h1>
+<p>Run this <b>signed out of Google, in a private window, on the live github.io URL</b> -
+it proves an anonymous browser can read the plan and a PIN-holder can write it, before any
+app code is built on top. The /exec URL is never stored or committed anywhere.</p>
+
+<label>Apps Script /exec URL</label>
+<input id="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+<label>Edit PIN</label>
+<input id="pin" placeholder="the EDIT_PIN script property" autocomplete="off">
+<div>
+  <button id="run">Run tests</button>
+  <button id="rate" class="warn" title="Deliberately locks writes for 5 minutes">Test rate limit (locks writes 5 min)</button>
+</div>
+<div id="log"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const log = (name, ok, detail, ms) => {
+  const d = document.createElement("div");
+  d.className = "row " + (ok ? "ok" : "bad");
+  d.innerHTML = `<b>${ok ? "PASS" : "FAIL"}</b><span>${name}${detail ? " - " + detail : ""}</span>` +
+    (ms != null ? `<span class="ms">${ms} ms</span>` : "");
+  $("log").appendChild(d);
+  return ok;
+};
+const canon = x => {
+  if (x === null || x === undefined) return "null";
+  if (typeof x !== "object" || Array.isArray(x)) return JSON.stringify(x);
+  return "{" + Object.keys(x).sort().map(k => JSON.stringify(k) + ":" + canon(x[k])).join(",") + "}";
+};
+async function call(url, opts){
+  const t0 = performance.now();
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  const ms = Math.round(performance.now() - t0);
+  let data = null;
+  try { data = JSON.parse(text); } catch(_){}
+  return { data, ms, raw:text.slice(0,120) };
+}
+const post = (url, body) => call(url, {method:"POST",
+  headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(body)});
+
+$("run").onclick = async () => {
+  $("log").innerHTML = "";
+  const url = $("url").value.trim(), pin = $("pin").value;
+  if (!url){ log("setup", false, "paste the /exec URL first"); return; }
+
+  try{
+    /* 1: anonymous version read (the CORS + anonymous-access proof) */
+    let r = await call(url + "?fn=version");
+    if (!log("anonymous GET ?fn=version", r.data && Number.isFinite(r.data.version),
+      r.data ? "version " + r.data.version : "non-JSON reply: " + r.raw, r.ms)) return;
+
+    /* 2: full state read */
+    r = await call(url + "?fn=state");
+    const okState = r.data && r.data.state && typeof r.data.state.guests === "object";
+    if (!log("anonymous GET ?fn=state", okState,
+      okState ? Object.keys(r.data.state.guests).length + " guests" : r.raw, r.ms)) return;
+    let base = r.data.version;
+
+    /* 3: PIN'd batch write */
+    const patch = {kind:"guest", id:"transport-test", before:null,
+      after:{name:"Transport Test", table:null, seat:null, seatedAt:null}};
+    r = await post(url, {pin, fn:"apply", baseVersion:base, patches:[patch]});
+    const wrote = r.data && !r.data.error && r.data.state.guests["transport-test"];
+    if (!log("PIN'd POST apply (add guest)", !!wrote,
+      r.data ? (r.data.error || "version " + r.data.version) : r.raw, r.ms)) return;
+    const after = r.data.version;
+
+    /* 4: stale base rejected, nothing applied */
+    r = await post(url, {pin, fn:"apply", baseVersion:base,
+      patches:[{kind:"guest", id:"should-never-exist", before:null, after:{name:"X"}}]});
+    log("stale baseVersion rejected", r.data && r.data.error === "stale" &&
+      !r.data.state.guests["should-never-exist"], r.data && r.data.error, r.ms);
+
+    /* 5: wrong PIN refused */
+    r = await post(url, {pin: pin + "WRONG", fn:"apply", baseVersion:after, patches:[]});
+    log("wrong PIN refused", r.data && r.data.error === "pin", r.data && r.data.error, r.ms);
+
+    /* 6: precondition conflict reported, not applied */
+    r = await post(url, {pin, fn:"apply", baseVersion:after, patches:[
+      {kind:"guest", id:"transport-test", before:{name:"NOT the real value"}, after:null}]});
+    const conflicted = r.data && !r.data.error && r.data.conflicts &&
+      r.data.conflicts.length === 1 && r.data.state.guests["transport-test"];
+    log("changed-underneath patch reported as conflict", !!conflicted,
+      r.data && JSON.stringify(r.data.conflicts), r.ms);
+    let v = r.data ? r.data.version : after;
+
+    /* 7: cleanup (correct precondition) */
+    r = await post(url, {pin, fn:"apply", baseVersion:v, patches:[
+      {kind:"guest", id:"transport-test",
+       before:{name:"Transport Test", table:null, seat:null, seatedAt:null}, after:null}]});
+    log("cleanup delete with matching precondition", r.data && !r.data.error &&
+      !r.data.state.guests["transport-test"] &&
+      (!r.data.conflicts || !r.data.conflicts.length), "", r.ms);
+
+    /* 8: 150-guest snapshot survives a round trip (cell-size proof) */
+    const big = {guests:{}, tables:{}, settings:{seatIcon:"centurion"}};
+    for (let i = 0; i < 150; i++)
+      big.guests["synth" + i] = {name:"Synthetic Guestname the " + (i+1) + "th",
+        table:"T" + ((i % 14) + 1), seat:i % 10, seatedAt:1700000000000 + i};
+    r = await post(url, {pin, fn:"saveVersion", label:"Transport test - safe to delete", state:big});
+    if (!log("saveVersion with 150-guest snapshot", r.data && r.data.ok, r.data && r.data.id, r.ms)) return;
+    const vid = r.data.id;
+    r = await call(url + "?fn=getVersion&id=" + encodeURIComponent(vid));
+    log("150-guest snapshot round-trips byte-identically",
+      r.data && canon(r.data.state) === canon(big), "", r.ms);
+    r = await call(url + "?fn=versions");
+    log("versions list (metadata only)", r.data && Array.isArray(r.data.versions) &&
+      r.data.versions.some(x => x.id === vid) && !("state" in (r.data.versions[0]||{})),
+      r.data && r.data.versions.length + " versions", r.ms);
+
+    log("ALL DONE", true, "if every row is green, stage 1 transport is proven");
+  }catch(err){
+    log("network", false, String(err) + " - if this is a TypeError on fetch, the CORS assumption failed");
+  }
+};
+
+$("rate").onclick = async () => {
+  const url = $("url").value.trim();
+  if (!url){ log("setup", false, "paste the /exec URL first"); return; }
+  if (!confirm("This sends 6 wrong PINs. Writes lock for 5 minutes. Continue?")) return;
+  let last = null;
+  for (let i = 0; i < 6; i++)
+    last = await post(url, {pin:"definitely-wrong-" + i, fn:"apply", baseVersion:0, patches:[]});
+  log("rate limit engages after repeated wrong PINs",
+    last.data && last.data.error === "locked", last.data && last.data.error, last.ms);
+};
+</script>
+</body>
+</html>
