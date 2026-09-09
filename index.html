@@ -146,18 +146,29 @@
     box-shadow:0 4px 12px rgba(35,37,43,.18);white-space:nowrap;max-width:190px;
     overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;}
   #ghost .soldier{display:block;transform:scaleX(var(--face,1));}
-  #ghost .bob{animation:gbob .38s ease-in-out infinite;display:block;}
-  #ghost .legA{animation:gswingA .38s linear infinite;transform-origin:19px 31px;transform-box:view-box;}
-  #ghost .legB{animation:gswingB .38s linear infinite;transform-origin:21px 31px;transform-box:view-box;}
-  #ghost .armA{animation:garmA .38s linear infinite;transform-origin:24.5px 20px;transform-box:view-box;}
-  #ghost .armB{animation:garmB .38s linear infinite;transform-origin:15px 21px;transform-box:view-box;}
+  .sprite .bob{animation:gbob .38s ease-in-out infinite;display:block;}
+  .sprite .legA{animation:gswingA .38s linear infinite;transform-origin:19px 31px;transform-box:view-box;}
+  .sprite .legB{animation:gswingB .38s linear infinite;transform-origin:21px 31px;transform-box:view-box;}
+  .sprite .armA{animation:garmA .38s linear infinite;transform-origin:24.5px 20px;transform-box:view-box;}
+  .sprite .armB{animation:garmB .38s linear infinite;transform-origin:15px 21px;transform-box:view-box;}
+  .sprite .cape{animation:gcape .5s ease-in-out infinite;transform-origin:14px 20px;transform-box:view-box;}
   @keyframes gswingA{0%,100%{transform:rotate(27deg)}50%{transform:rotate(-27deg)}}
   @keyframes gswingB{0%,100%{transform:rotate(-27deg)}50%{transform:rotate(27deg)}}
   @keyframes garmA{0%,100%{transform:rotate(-13deg)}50%{transform:rotate(13deg)}}
   @keyframes garmB{0%,100%{transform:rotate(13deg)}50%{transform:rotate(-13deg)}}
   @keyframes gbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6px)}}
+  @keyframes gcape{0%,100%{transform:rotate(2deg)}50%{transform:rotate(-6deg)}}
   @media (prefers-reduced-motion:reduce){
-    #ghost .bob,#ghost .legA,#ghost .legB,#ghost .armA,#ghost .armB{animation:none;}}
+    .sprite .bob,.sprite .legA,.sprite .legB,.sprite .armA,.sprite .armB,
+    .sprite .cape{animation:none;}}
+  #iconsBtn svg{width:24px;height:21px;display:block;}
+  .runnerpick{display:flex;gap:8px;flex-wrap:wrap;}
+  .runnerpick button{border:1px solid var(--line);background:#fff;border-radius:9px;
+    width:66px;height:76px;padding:6px 4px 2px;cursor:pointer;display:flex;
+    flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;}
+  .runnerpick button svg{width:44px;height:52px;}
+  .runnerpick button.on{border-color:var(--gold);background:var(--gold-soft);}
+  .runnerpick button i{font:500 9.5px Karla,sans-serif;font-style:normal;color:var(--muted);}
   .guests.dropcue{outline:2px dashed var(--gold);outline-offset:-6px;}
   body.dragging, body.dragging .chip, body.dragging .rrow, body.dragging .seat-hit{cursor:grabbing;}
 
@@ -278,7 +289,7 @@
   body.readonly #importTabs, body.readonly #tab-paste, body.readonly #tab-xlsx,
   body.readonly #tab-type, body.readonly .del, body.readonly .stepper,
   body.readonly #undoBtn, body.readonly #redoBtn, body.readonly #verBtn,
-  body.readonly #iconPick, body.readonly #famBtn, body.readonly #resetBtn,
+  body.readonly #iconsBtn, body.readonly #famBtn, body.readonly #resetBtn,
   body.readonly .allseats, body.readonly .dhint{display:none;}
   body.readonly .chip, body.readonly .rrow, body.readonly .seat-hit,
   body.readonly .zpill{cursor:default;}
@@ -317,7 +328,7 @@
     header h1{font-size:15px;}
     .counts{display:none;}
     .hdr-right{margin-left:auto;flex-wrap:nowrap;overflow:hidden;gap:6px;}
-    #iconPick,#famBtn,#verBtn,#resetBtn,#btnXlsx,#btnPdf{display:none !important;}
+    #iconsBtn,#famBtn,#verBtn,#resetBtn,#btnXlsx,#btnPdf{display:none !important;}
     #menuBtn{display:inline-flex;}
     .savestate{font-size:10.5px;white-space:nowrap;}
 
@@ -380,7 +391,7 @@
   <h1>Wedding Seating Planner</h1>
   <span class="counts" id="counts"></span>
   <div class="hdr-right">
-    <span class="iconpick" id="iconPick" title="Choose your seat-card helmet"></span>
+    <button class="hbtn editonly" id="iconsBtn" title="Icons &amp; runner"></button>
     <button class="hbtn" id="famBtn" style="font-size:13px"
       title="Colour-code guests by surname">Families</button>
     <button class="hbtn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
@@ -469,29 +480,7 @@
 
 <div id="ghost">
   <span class="gname" id="gname"></span>
-  <span class="soldier"><span class="bob">
-    <svg viewBox="0 0 40 48" width="46" height="55" aria-hidden="true">
-      <g class="armB"><rect x="13.2" y="20" width="3.5" height="9" rx="1.7" fill="#E8B88A"/></g>
-      <ellipse cx="12" cy="27" rx="5" ry="8" fill="#B33A2E" stroke="#A98442" stroke-width="1.2"/>
-      <circle cx="12" cy="27" r="1.6" fill="#C9A227"/>
-      <g class="legA"><path d="M19 31 L15 42 L11.5 41" stroke="#E8B88A" stroke-width="3.4"
-        fill="none" stroke-linecap="round"/></g>
-      <g class="legB"><path d="M21 31 L26 42 L29.5 41.2" stroke="#D9A878" stroke-width="3.4"
-        fill="none" stroke-linecap="round"/></g>
-      <path d="M14 18 L26 18 L27 30 Q20 33 13 30 Z" fill="#B33A2E"/>
-      <path d="M13.6 22 h13" stroke="#C9A227" stroke-width="1.6"/>
-      <path d="M13.9 26 h12.5" stroke="#C9A227" stroke-width="1.6"/>
-      <g class="armA">
-        <rect x="23.2" y="19" width="3.5" height="10" rx="1.7" fill="#E8B88A"/>
-        <line x1="28" y1="33" x2="32.5" y2="9" stroke="#8C6A2F" stroke-width="1.8"/>
-        <path d="M32.5 9 l1.6 -5.5 l1.2 6 Z" fill="#7A828C"/>
-      </g>
-      <circle cx="21" cy="12" r="4.6" fill="#E8B88A"/>
-      <path d="M15.5 12 Q15.5 5.5 21 5.5 Q26.5 5.5 26.5 12 L26.5 13 Q28.2 13.5 28.7 15.5
-        L26 15.5 L25.5 13.5 L16.5 13.5 Z" fill="#C9A227" stroke="#A98442" stroke-width="1"/>
-      <path d="M15 7.5 Q21 -3 27.5 6.5 L25.5 8.2 Q21 1.5 17 8.8 Z" fill="#B33A2E"/>
-    </svg>
-  </span></span>
+  <span class="soldier sprite"><span class="bob" id="runnerBox"></span></span>
 </div>
 
 <div id="tip">
@@ -544,10 +533,7 @@
   <div class="panel">
     <div class="mrow"><h2 style="flex:1">Menu</h2>
       <button class="hbtn mclose" id="menuClose">&times;</button></div>
-    <div class="editonly" style="display:flex;align-items:center;gap:10px">
-      <span style="font:700 13px Karla,sans-serif">Helmet</span>
-      <span class="iconpick iconpick-m"></span>
-    </div>
+    <button class="mitem editonly" data-menu="icons">Icons &amp; runners</button>
     <button class="mitem editonly" data-menu="fams">Family colours</button>
     <button class="mitem editonly" data-menu="addguests">Add guests</button>
     <button class="mitem" data-menu="roster">Roster</button>
@@ -577,6 +563,17 @@
   </div>
 </div>
 
+<div class="modal" id="iconsFly">
+  <div class="panel">
+    <div class="mrow"><h2 style="flex:1">Icons</h2>
+      <button class="hbtn mclose" id="iconsClose">&times;</button></div>
+    <p class="hint" style="margin:0">Seat-card helmet</p>
+    <span class="iconpick"></span>
+    <p class="hint" style="margin:6px 0 0">Drag runner - who carries your guests</p>
+    <span class="runnerpick sprite"></span>
+  </div>
+</div>
+
 <div class="modal" id="deleteSheet">
   <div class="panel">
     <div class="mrow"><h2 style="flex:1">Delete guests</h2>
@@ -591,9 +588,9 @@
 
 <div class="modal" id="pinModal">
   <div class="panel">
-    <h2>Enter the edit code</h2>
+    <h2>Read-only mode</h2>
     <p class="hint" style="font-size:13px">Anyone with the link can view the plan.
-      The edit code (set by Ross) unlocks changes on this device.</p>
+      To make changes, enter the edit code - it unlocks editing on this device.</p>
     <div class="mrow">
       <input type="password" id="pinInput" placeholder="Edit code" autocomplete="off">
       <button class="addbtn" id="pinGo">Unlock</button>
@@ -654,7 +651,7 @@ let serverVersion = 0;
 let pin = "";
 try { pin = localStorage.getItem(LS_PIN) || ""; } catch(_){}
 let editable = false, online = false;
-let seatIcon = "centurion", colorFams = false;
+let seatIcon = "centurion", colorFams = false, runner = "legionary";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g,
@@ -734,10 +731,16 @@ const GUEST_ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
 
 function paintSync(){
   const ss = $("savestate");
+  const n = typeof outbox !== "undefined" ? outbox.length : 0;
   ss.classList.toggle("bad", everTalked && !online);
   if (!everTalked){ ss.textContent = "Connecting…"; return; }
-  if (!online){ ss.textContent = "Can't reach the plan - not saving"; return; }
-  if (postsInFlight){ ss.textContent = "Saving…"; return; }
+  if (!online){
+    ss.textContent = n
+      ? `Offline · ${n} change${n>1?"s":""} saved here, syncing when back`
+      : "Offline · reconnecting…";
+    return;
+  }
+  if (n){ ss.textContent = "Saving…"; return; }
   const t = new Date().toLocaleTimeString(undefined, {hour:"2-digit", minute:"2-digit"});
   ss.textContent = editable ? `Editing · Synced ${t}` : `View only · live · ${t}`;
 }
@@ -788,6 +791,7 @@ function syncSettingsUi(){
   const ui = state.settings.ui || {};
   seatIcon = HELMETS[ui.seatIcon] ? ui.seatIcon : "centurion";
   colorFams = !!ui.colorBySurname;
+  runner = RUNNERS[ui.runner] ? ui.runner : "legionary";
   renderIconPick();
 }
 async function refetch(){
@@ -800,7 +804,8 @@ async function refetch(){
   catch(_){ setSync(false); }
 }
 async function pollTick(){
-  if (document.hidden || pollBusy || postsInFlight) return;
+  if (document.hidden || pollBusy) return;
+  if (outbox.length){ flushOutbox(); return; }   /* unsent changes first */
   pollBusy = true;
   try{
     if (mustRefetch) await refetch();
@@ -833,22 +838,42 @@ $("syncBtn").onclick = async () => {
   b.classList.remove("spin");
 };
 
-/* one POST at a time so baseVersion advances cleanly */
-let postChain = Promise.resolve();
+/* LOCAL-FIRST OUTBOX: every change applies on screen immediately and queues
+   here; the queue drains in order whenever the network allows, retrying on
+   its own (poll tick, focus, coming back online, a 5s retry timer). Only a
+   SERVER verdict (bad pin, lockout) rolls a change back - a dead network
+   never does (Ross: work locally first, sync after). */
+const outbox = [];
+let flushing = false;
 function queuePost(sent, meta){
-  postsInFlight++;
+  outbox.push({sent, meta});
   pendingSent.push(sent);
+  postsInFlight = outbox.length;
   paintSync();
-  postChain = postChain
-    .then(() => sendBatch(sent, meta))
-    .catch(()=>{})
-    .finally(() => {
-      postsInFlight--;
-      const i = pendingSent.indexOf(sent);
-      if (i >= 0) pendingSent.splice(i, 1);
-      paintSync();
-    });
+  flushOutbox();
 }
+async function flushOutbox(){
+  if (flushing || !outbox.length) return;
+  flushing = true;
+  while (outbox.length){
+    const item = outbox[0];
+    try{
+      await sendBatch(item.sent, item.meta);   /* throws only on network failure */
+      outbox.shift();
+      setSync(true);
+    }catch(err){
+      if (err && err.serverHandled){ outbox.shift(); continue; }
+      setSync(false);                          /* network: keep it, retry later */
+      break;
+    }
+    postsInFlight = outbox.length;
+  }
+  postsInFlight = outbox.length;
+  flushing = false;
+  paintSync();
+}
+setInterval(() => { if (outbox.length && !flushing) flushOutbox(); }, 5000);
+addEventListener("online", () => flushOutbox());
 /* name a conflict from the patches WE sent, never from post-adopt state */
 function conflictNames(conflicts, sent){
   return conflicts.slice(0,3).map(c => {
@@ -860,35 +885,43 @@ function conflictNames(conflicts, sent){
   }).join(", ");
 }
 async function sendBatch(sent, meta){
+  let res;
   try{
-    let res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches:sent});
+    res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches:sent});
     if (res.error === "stale"){
       serverVersion = res.version;   // one retry on the fresh base; preconditions still protect
       res = await rawPost({pin, fn:"apply", baseVersion:serverVersion, patches:sent});
     }
-    if (res.error) throw res;
-    /* drop from pending BEFORE adopting: the response already contains it */
-    const i = pendingSent.indexOf(sent);
-    if (i >= 0) pendingSent.splice(i, 1);
-    adopt(res.version, res.state);
-    setSync(true);
-    if (res.conflicts && res.conflicts.length){
-      toast(`Someone else changed ${conflictNames(res.conflicts, sent) || "that"} first - ` +
-        `those parts were skipped.`);
-    }
-  }catch(err){
+  }catch(_){
+    throw new Error("network");      /* keep the change local; the outbox retries */
+  }
+  if (res.error === "pin" || res.error === "locked"){
+    /* a server VERDICT: these changes can never land - roll back this batch
+       and everything queued behind it, then lock the UI */
+    for (let i = outbox.length - 1; i >= 1; i--) rollbackFailed(outbox[i].sent, outbox[i].meta);
+    outbox.length = 1;               /* flushOutbox shifts the current item */
     rollbackFailed(sent, meta);
-    if (err && err.error === "pin"){
+    if (res.error === "pin"){
       setEditable(false);
       try{ localStorage.removeItem(LS_PIN); }catch(_){}
-      toast("The edit code was rejected - editing is locked again.");
-    } else if (err && err.error === "locked"){
-      toast("Too many wrong codes recently - writes are locked for a few minutes.");
+      toast("The edit code was rejected - editing is locked. Enter the current code.");
+      $("pinModal").style.display = "flex";
     } else {
-      setSync(false);
-      toast("Couldn't save that change - it has been undone.");
+      toast("Too many wrong codes recently - writes are locked for a few minutes.");
     }
     await refetch();
+    const e = new Error(res.error); e.serverHandled = true; throw e;
+  }
+  if (res.error){                     /* unknown server reply: treat as network */
+    throw new Error("network");
+  }
+  /* drop from pending BEFORE adopting: the response already contains it */
+  const i = pendingSent.indexOf(sent);
+  if (i >= 0) pendingSent.splice(i, 1);
+  adopt(res.version, res.state);
+  if (res.conflicts && res.conflicts.length){
+    toast(`Someone else changed ${conflictNames(res.conflicts, sent) || "that"} first - ` +
+      `those parts were skipped.`);
   }
 }
 /* revert the failed batch locally AND repair the stacks, so the screen never
@@ -993,10 +1026,17 @@ function applyPatchLocal(p, dir){
 }
 /* returns true only when the change was actually applied (locally) and queued -
    callers must not announce success otherwise */
+/* read-only interception: any attempted edit opens the code prompt (Ross) */
+function requireEdit(){
+  if (editable) return true;
+  $("pinModal").style.display = "flex";
+  $("pinInput").focus();
+  return false;
+}
 function commit(patches){
   if (!patches.length) return false;
-  if (!editable){ toast("View only - enter the edit code to make changes."); return false; }
-  if (!online){ toast("Can't reach the plan right now - change not made."); return false; }
+  if (!requireEdit()) return false;
+  /* NO online check: changes apply locally at once and the outbox syncs them */
   undoStack.push(patches);
   if (undoStack.length > 100) undoStack.shift();
   redoStack.length = 0;
@@ -1009,7 +1049,7 @@ const invert = patches => [...patches].reverse()
   .map(p => ({kind:p.kind, id:p.id, before:p.after, after:p.before}));
 function undo(){
   if (!undoStack.length) return;
-  if (!editable || !online){ toast("Can't undo right now - the plan is unreachable."); return; }
+  if (!editable){ requireEdit(); return; }
   const entry = undoStack.pop();
   redoStack.push(entry);
   const inv = invert(entry);
@@ -1019,7 +1059,7 @@ function undo(){
 }
 function redo(){
   if (!redoStack.length) return;
-  if (!editable || !online){ toast("Can't redo right now - the plan is unreachable."); return; }
+  if (!editable){ requireEdit(); return; }
   const entry = redoStack.pop();
   undoStack.push(entry);
   for (const p of entry) applyPatchLocal(p, "after");
@@ -1040,6 +1080,7 @@ document.addEventListener("keydown", e => {
     $("menuSheet").style.display = "none";
     $("importSheet").style.display = "none";
     $("deleteSheet").style.display = "none";
+    $("iconsFly").style.display = "none";
     delete document.body.dataset.roster; return; }
   if (!editable) return;
   if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
@@ -1062,7 +1103,7 @@ const tablePatch = (tableId, nextCfg) => {
   return {kind:"table", id:tableId, before: cur ? {...cur} : null,
     after: Object.keys(next).length ? next : null};
 };
-const settingsBody = () => ({seatIcon, colorBySurname: colorFams});
+const settingsBody = () => ({seatIcon, colorBySurname: colorFams, runner});
 
 /* ============ operations ============ */
 function opAddGuests(names){
@@ -1167,12 +1208,17 @@ const settingsBefore = () => state.settings.ui ? settingsBody() : null;
 function opSetIcon(k){
   if (!HELMETS[k] || k === seatIcon) return;
   commit([{kind:"settings", id:"ui", before:settingsBefore(),
-    after:{seatIcon:k, colorBySurname: colorFams}}]);
+    after:{...settingsBody(), seatIcon:k}}]);
+}
+function opSetRunner(k){
+  if (!RUNNERS[k] || k === runner) return;
+  commit([{kind:"settings", id:"ui", before:settingsBefore(),
+    after:{...settingsBody(), runner:k}}]);
 }
 function opToggleFams(){
   const turningOn = !colorFams;
   const done = commit([{kind:"settings", id:"ui", before:settingsBefore(),
-    after:{seatIcon, colorBySurname: turningOn}}]);
+    after:{...settingsBody(), colorBySurname: turningOn}}]);
   if (!done) return;
   if (turningOn){
     const set = new Set([...state.guests.values()].map(g => surnameOf(g.name)).filter(Boolean));
@@ -1597,13 +1643,22 @@ function renderRoster(){
 
 /* delegated clicks */
 document.addEventListener("click", e => {
-  if (!editable) return;
+  if (!editable){
+    /* an attempted edit in read-only mode opens the code prompt (Ross) */
+    if (e.target.closest("[data-del],[data-unseat],[data-icon],[data-runner]," +
+        "[data-seatminus],[data-seatplus],[data-allminus],[data-allplus]," +
+        "[data-rename],[data-pick],#guestPanel [data-guest]"))
+      requireEdit();
+    return;
+  }
   const del = e.target.closest("[data-del]");
   if (del){ opDelete(del.dataset.del); return; }
   const un = e.target.closest("[data-unseat]");
   if (un){ opUnseat(un.dataset.unseat); return; }
   const ic = e.target.closest("[data-icon]");
   if (ic){ opSetIcon(ic.dataset.icon); return; }
+  const rn2 = e.target.closest("[data-runner]");
+  if (rn2){ opSetRunner(rn2.dataset.runner); return; }
   const minus = e.target.closest("[data-seatminus]");
   if (minus){ opSetSeats(minus.dataset.seatminus, tSeats(minus.dataset.seatminus)-1); return; }
   const plus = e.target.closest("[data-seatplus]");
@@ -1750,7 +1805,8 @@ $("menuSheet").addEventListener("click", e => {
   if (!it) return;
   $("menuSheet").style.display = "none";
   const act = it.dataset.menu;
-  if (act === "fams" && editable) opToggleFams();
+  if (act === "icons" && editable) $("iconsFly").style.display = "flex";
+  else if (act === "fams" && editable) opToggleFams();
   else if (act === "addguests" && editable) $("importSheet").style.display = "flex";
   else if (act === "roster") document.body.dataset.roster = "open";
   else if (act === "versions" && editable) openVersions();
@@ -2216,13 +2272,90 @@ const HELMETS = {
 };
 const HELMET_TITLES = {centurion:"Centurion", gallic:"Gallic steel",
   lineart:"Line art", praetorian:"Praetorian"};
+
+/* ---- the drag runners: who carries your guests across the room ---- */
+const RUNNERS = {
+  legionary: `<svg viewBox="0 0 40 48" width="46" height="55" aria-hidden="true">
+    <g class="armB"><rect x="13.2" y="20" width="3.5" height="9" rx="1.7" fill="#E8B88A"/></g>
+    <ellipse cx="12" cy="27" rx="5" ry="8" fill="#B33A2E" stroke="#A98442" stroke-width="1.2"/>
+    <circle cx="12" cy="27" r="1.6" fill="#C9A227"/>
+    <g class="legA"><path d="M19 31 L15 42 L11.5 41" stroke="#E8B88A" stroke-width="3.4"
+      fill="none" stroke-linecap="round"/></g>
+    <g class="legB"><path d="M21 31 L26 42 L29.5 41.2" stroke="#D9A878" stroke-width="3.4"
+      fill="none" stroke-linecap="round"/></g>
+    <path d="M14 18 L26 18 L27 30 Q20 33 13 30 Z" fill="#B33A2E"/>
+    <path d="M13.6 22 h13" stroke="#C9A227" stroke-width="1.6"/>
+    <path d="M13.9 26 h12.5" stroke="#C9A227" stroke-width="1.6"/>
+    <g class="armA">
+      <rect x="23.2" y="19" width="3.5" height="10" rx="1.7" fill="#E8B88A"/>
+      <line x1="28" y1="33" x2="32.5" y2="9" stroke="#8C6A2F" stroke-width="1.8"/>
+      <path d="M32.5 9 l1.6 -5.5 l1.2 6 Z" fill="#7A828C"/>
+    </g>
+    <circle cx="21" cy="12" r="4.6" fill="#E8B88A"/>
+    <path d="M15.5 12 Q15.5 5.5 21 5.5 Q26.5 5.5 26.5 12 L26.5 13 Q28.2 13.5 28.7 15.5
+      L26 15.5 L25.5 13.5 L16.5 13.5 Z" fill="#C9A227" stroke="#A98442" stroke-width="1"/>
+    <path d="M15 7.5 Q21 -3 27.5 6.5 L25.5 8.2 Q21 1.5 17 8.8 Z" fill="#B33A2E"/></svg>`,
+  shieldmaiden: `<svg viewBox="0 0 40 48" width="46" height="55" aria-hidden="true">
+    <path d="M25 10 Q30 14 29 24 L26.5 23 Q27.5 15 24 12 Z" fill="#D9B356"/>
+    <g class="armB"><rect x="13.2" y="20" width="3.5" height="9" rx="1.7" fill="#E8B88A"/></g>
+    <circle cx="11.5" cy="26.5" r="8" fill="#A23B32" stroke="#5E5A50" stroke-width="1.4"/>
+    <path d="M4 26.5 h15 M11.5 19 v15" stroke="#E8E3D5" stroke-width="1.6"/>
+    <circle cx="11.5" cy="26.5" r="2.2" fill="#6B6660"/>
+    <g class="legA"><path d="M19 31 L15 42 L11.5 41" stroke="#E8B88A" stroke-width="3.4"
+      fill="none" stroke-linecap="round"/></g>
+    <g class="legB"><path d="M21 31 L26 42 L29.5 41.2" stroke="#D9A878" stroke-width="3.4"
+      fill="none" stroke-linecap="round"/></g>
+    <path d="M14 18 L26 18 L28.5 32 Q20 35.5 11.5 32 Z" fill="#4E7A8A"/>
+    <path d="M13.4 21.5 h13.4" stroke="#8C6A2F" stroke-width="1.8"/>
+    <g class="armA">
+      <rect x="23.2" y="19" width="3.5" height="10" rx="1.7" fill="#E8B88A"/>
+      <line x1="27" y1="31" x2="31.5" y2="11" stroke="#7A5F2C" stroke-width="1.8"/>
+      <path d="M31.5 11 q6 -1.5 5 5 q-2.5 -2 -6 -1.5 Z" fill="#7A828C" stroke="#5E5A50" stroke-width=".8"/>
+    </g>
+    <circle cx="21" cy="12" r="4.6" fill="#E8B88A"/>
+    <path d="M16 10 Q16 5 21 5 Q26 5 26 10 L26 12 Q21 9.5 16 12 Z" fill="#D9B356"/>
+    <path d="M16.2 9.8 Q21 6.2 25.8 9.8" fill="none" stroke="#AEB4BC" stroke-width="2.2"/></svg>`,
+  spartan: `<svg viewBox="0 0 40 48" width="46" height="55" aria-hidden="true">
+    <g class="cape"><path d="M14.5 17.5 Q4 23 5.5 38 L11.5 34 Q9.5 25 17 20 Z" fill="#8E2B22"/></g>
+    <g class="armB"><rect x="13.2" y="20" width="3.5" height="9" rx="1.7" fill="#E8B88A"/></g>
+    <circle cx="11.5" cy="26.5" r="7.6" fill="#C9A227" stroke="#6B5124" stroke-width="1.4"/>
+    <path d="M8.5 30 L11.5 22.5 L14.5 30 M9.9 26.6 h3.2" stroke="#5E4A1E" stroke-width="1.5" fill="none"/>
+    <g class="legA"><path d="M19 31 L15 42 L11.5 41" stroke="#E8B88A" stroke-width="3.4"
+      fill="none" stroke-linecap="round"/></g>
+    <g class="legB"><path d="M21 31 L26 42 L29.5 41.2" stroke="#D9A878" stroke-width="3.4"
+      fill="none" stroke-linecap="round"/></g>
+    <path d="M14 18 L26 18 L26.8 30 Q20 32.8 13.2 30 Z" fill="#8C6A2F"/>
+    <path d="M15 21.5 h10 M15.4 24.5 h9.2 M15.8 27.5 h8.4" stroke="#6B5124" stroke-width="1.1"/>
+    <g class="armA">
+      <rect x="23.2" y="19" width="3.5" height="10" rx="1.7" fill="#E8B88A"/>
+      <line x1="27.5" y1="35" x2="33.5" y2="5" stroke="#7A5F2C" stroke-width="1.7"/>
+      <path d="M33.5 5 l1.3 -4.5 l1 5 Z" fill="#7A828C"/>
+    </g>
+    <path d="M15.5 15.5 Q14.5 5.5 21 5 Q27.5 5.5 26.5 15.5 L24.5 15.5 L24 11.5
+      Q23.5 13.5 22 13.5 L20 13.5 Q18.5 13.5 18 11.5 L17.5 15.5 Z"
+      fill="#C9A227" stroke="#6B5124" stroke-width="1"/>
+    <rect x="20.2" y="9.5" width="1.6" height="5" fill="#E8B88A"/>
+    <path d="M13 6.5 Q21 -5 29.5 6 L27.5 8 Q21 -1 15 8.5 Z" fill="#B33A2E"/></svg>`,
+};
+const RUNNER_TITLES = {legionary:"Legionary", shieldmaiden:"Shieldmaiden", spartan:"Spartan"};
 function renderIconPick(){
-  const html = Object.keys(HELMETS).map(k =>
+  const helmHtml = Object.keys(HELMETS).map(k =>
     `<button data-icon="${k}" class="${k===seatIcon?"on":""}" title="${HELMET_TITLES[k]}">${HELMETS[k]}</button>`).join("");
-  document.querySelectorAll(".iconpick").forEach(elm => { elm.innerHTML = html; });
+  document.querySelectorAll(".iconpick").forEach(elm => { elm.innerHTML = helmHtml; });
+  const runHtml = Object.keys(RUNNERS).map(k =>
+    `<button data-runner="${k}" class="${k===runner?"on":""}" title="${RUNNER_TITLES[k]}">` +
+    `${RUNNERS[k]}<i>${RUNNER_TITLES[k]}</i></button>`).join("");
+  document.querySelectorAll(".runnerpick").forEach(elm => { elm.innerHTML = runHtml; });
+  $("iconsBtn").innerHTML = HELMETS[seatIcon];
+  $("runnerBox").innerHTML = RUNNERS[runner];
   $("tipIcon").innerHTML = HELMETS[seatIcon];
   $("famBtn").classList.toggle("on", colorFams);
 }
+$("iconsBtn").onclick = () => { $("iconsFly").style.display = "flex"; };
+$("iconsClose").onclick = () => $("iconsFly").style.display = "none";
+$("iconsFly").addEventListener("click", e => {
+  if (e.target === $("iconsFly")) $("iconsFly").style.display = "none";
+});
 $("famBtn").onclick = () => editable && opToggleFams();
 
 /* ============ seat hover card ============ */
@@ -2324,7 +2457,8 @@ function snapshotDiff(b){
   const snapUi = (b.settings && b.settings.ui) || null;
   if (snapUi){
     const snapSet = {seatIcon: HELMETS[snapUi.seatIcon] ? snapUi.seatIcon : seatIcon,
-      colorBySurname: !!snapUi.colorBySurname};
+      colorBySurname: !!snapUi.colorBySurname,
+      runner: RUNNERS[snapUi.runner] ? snapUi.runner : runner};
     if (JSON.stringify(settingsBody()) !== JSON.stringify(snapSet))
       patches.push({kind:"settings", id:"ui", before:settingsBefore(), after:snapSet});
   }
