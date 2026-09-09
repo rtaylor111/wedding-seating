@@ -274,19 +274,39 @@
   body.readonly .tname:hover{border-bottom-color:transparent;}
   body.readonly #pinBtn{display:inline-block;}
 
-  @media (max-width:980px){
-    body{height:auto;display:block;}
-    .app{flex-direction:column;height:auto;}
-    .guests,.roster{width:auto;flex:auto;border:0;border-bottom:1px solid var(--line);
-      overflow:visible;}
-    .chips{flex:none;max-height:45vh;}
-    .roster{border-bottom:0;border-top:1px solid var(--line);max-height:none;}
-    main{display:block;}
-    .planwrap{height:72vh;}
+  /* ---- mobile app mode: bottom tabs, one full-height view at a time ---- */
+  #mnav{display:none;flex:0 0 auto;border-top:1px solid var(--line);background:#fff;
+    padding-bottom:env(safe-area-inset-bottom);}
+  #mnav button{flex:1;border:0;background:none;padding:11px 4px;cursor:pointer;
+    font:700 13px Karla,sans-serif;color:var(--muted);}
+  #mnav button.on{color:var(--gold);}
+  body:not(.readonly) .zseat.empty{cursor:pointer;}
+  body:not(.readonly) .zseat.empty .zpill{cursor:pointer;}
+  .pickrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+    background:var(--chip);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;font:700 14px Karla,sans-serif;color:var(--ink);cursor:pointer;}
+  .pickrow:hover{border-color:var(--gold);background:var(--gold-soft);}
+  @media (max-width:820px){
+    body{height:100vh;}
+    @supports (height:100dvh){ body{height:100dvh;} }
+    header{padding:8px 10px;gap:6px 8px;}
+    header h1{font-size:16px;}
+    .counts{flex-basis:100%;order:5;font-size:11.5px;}
+    .hdr-right{margin-left:0;flex:1 1 100%;overflow-x:auto;flex-wrap:nowrap;
+      scrollbar-width:none;}
+    .app{flex-direction:column;}
+    .guests, .roster, main{display:none;}
+    body[data-mview="plan"] main{display:flex;padding:6px;flex:1;min-height:0;}
+    body[data-mview="guests"] .guests{display:flex;width:auto;flex:1;min-height:0;
+      border:0;overflow:hidden;}
+    body[data-mview="roster"] .roster{display:flex;width:auto;flex:1;min-height:0;
+      border:0;overflow-y:auto;}
+    .chips{flex:1;max-height:none;}
+    #mnav{display:flex;}
   }
 </style>
 </head>
-<body>
+<body data-mview="plan">
 
 <header>
   <h1>Wedding Seating Planner</h1>
@@ -435,6 +455,23 @@
       version is saved automatically first, and a restore can be undone with &#8630;.
       The backup file holds the seating data - every guest, their seat, and the
       table set-up. Download one before any big change.</p>
+  </div>
+</div>
+
+<nav id="mnav">
+  <button data-mtab="plan" class="on">Plan</button>
+  <button data-mtab="guests">Guests</button>
+  <button data-mtab="roster">Roster</button>
+</nav>
+
+<div class="modal" id="pickModal">
+  <div class="panel">
+    <h2 id="pickTitle">Seat a guest</h2>
+    <div class="mrow">
+      <input type="search" id="pickSearch" placeholder="Search unseated guests&hellip;">
+      <button class="hbtn mclose" id="pickClose">&times;</button>
+    </div>
+    <div class="verlist" id="pickList"></div>
   </div>
 </div>
 
@@ -882,7 +919,8 @@ $("redoBtn").onclick = () => redo();
 document.addEventListener("keydown", e => {
   if (e.target.closest("input,textarea")) return;   /* Esc in a rename cancels the rename only */
   if (e.key === "Escape"){ closeZoom(); $("verModal").style.display = "none";
-    $("pinModal").style.display = "none"; return; }
+    $("pinModal").style.display = "none";
+    $("pickModal").style.display = "none"; pickTarget = null; return; }
   if (!editable) return;
   if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
   else if ((e.ctrlKey||e.metaKey) && (e.key.toLowerCase() === "y" ||
@@ -1396,8 +1434,60 @@ document.addEventListener("click", e => {
     else opSetSeatsAll(vals[0] + (ap ? 1 : -1));
     return;
   }
+  const pk = e.target.closest("[data-pick]");
+  if (pk && Date.now() >= suppressClickUntil){
+    const [tid, idx] = pk.dataset.pick.split(":");
+    openPicker(tid, +idx);
+    return;
+  }
   const rn = e.target.closest("[data-rename]");
   if (rn) startRename(rn);
+});
+
+/* tap an empty seat -> pick an unseated guest for it */
+let pickTarget = null;
+function openPicker(tableId, seatIdx){
+  pickTarget = {tableId, seatIdx};
+  $("pickTitle").textContent = `Seat ${seatIdx+1} at ${tName(tableId)}`;
+  $("pickSearch").value = "";
+  renderPickList();
+  $("pickModal").style.display = "flex";
+  $("pickSearch").focus();
+}
+function renderPickList(){
+  const q = $("pickSearch").value.trim().toLowerCase();
+  const list = unseated().filter(([,g]) => !q || g.name.toLowerCase().includes(q));
+  $("pickList").innerHTML = list.length
+    ? ""
+    : `<p class="emptymsg">${state.guests.size
+        ? "Nobody is unseated - drag someone from another table instead."
+        : "No guests on the list yet."}</p>`;
+  for (const [gid, g] of list){
+    const b = document.createElement("button");
+    b.className = "pickrow";
+    const c = famColor(g.name);
+    b.innerHTML = (c ? `<span class="fam" style="background:${c}"></span>` : "") +
+      `<span>${esc(g.name)}</span>`;
+    b.onclick = () => {
+      $("pickModal").style.display = "none";
+      if (pickTarget) opSeatAt(gid, pickTarget.tableId, pickTarget.seatIdx);
+      pickTarget = null;
+    };
+    $("pickList").appendChild(b);
+  }
+}
+$("pickSearch").addEventListener("input", renderPickList);
+$("pickClose").onclick = () => { $("pickModal").style.display = "none"; pickTarget = null; };
+$("pickModal").addEventListener("click", e => {
+  if (e.target === $("pickModal")){ $("pickModal").style.display = "none"; pickTarget = null; }
+});
+
+/* mobile bottom tabs */
+$("mnav").addEventListener("click", e => {
+  const b = e.target.closest("[data-mtab]");
+  if (!b) return;
+  document.body.dataset.mview = b.dataset.mtab;
+  for (const x of $("mnav").children) x.classList.toggle("on", x === b);
 });
 function startRename(span){
   const tableId = span.dataset.rename;
@@ -1582,9 +1672,11 @@ function renderZoom(){
   const helm = HELMETS[seatIcon];
   const seatHtml = (i, side) => {
     const gid = p.slots[i];
-    if (!gid) return `<div class="zseat empty${side}" data-drop-seat="${t.id}:${i}">` +
+    if (!gid) return `<div class="zseat empty${side}" data-drop-seat="${t.id}:${i}"` +
+      ` data-pick="${t.id}:${i}" title="Tap to seat a guest here">` +
       `<span class="zhelm">${helm}</span>` +
-      `<span class="zpill"><span class="nm">Empty</span><span class="no">${i+1}</span></span></div>`;
+      `<span class="zpill"><span class="nm">Empty${editable ? " - tap to seat" : ""}</span>` +
+      `<span class="no">${i+1}</span></span></div>`;
     const g = state.guests.get(gid);
     const c = famColor(g.name);
     return `<div class="zseat${side}" data-drop-seat="${t.id}:${i}" data-guest="${gid}"` +
