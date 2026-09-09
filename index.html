@@ -436,6 +436,8 @@
         <button data-view="unseated">Unseated</button>
         <button data-view="seated">Seated</button>
       </div>
+      <button class="hbtn editonly" id="delBtn" style="font-size:12px"
+        title="Delete guests from the list">Delete&hellip;</button>
     </div>
     <div class="chips" id="chips"></div>
   </aside>
@@ -572,6 +574,18 @@
       <button class="hbtn mclose" id="pickClose">&times;</button>
     </div>
     <div class="verlist" id="pickList"></div>
+  </div>
+</div>
+
+<div class="modal" id="deleteSheet">
+  <div class="panel">
+    <div class="mrow"><h2 style="flex:1">Delete guests</h2>
+      <button class="hbtn mclose" id="delClose">&times;</button></div>
+    <p class="hint" style="font-size:12.5px">Tick who to remove from the guest list entirely
+      (their seat included). Nothing is deleted until you confirm - and even then, &#8630; undoes it.</p>
+    <input type="search" id="delSearch" placeholder="Search guests&hellip;">
+    <div class="verlist" id="delList"></div>
+    <button class="addbtn" id="delGo" disabled>Delete selected</button>
   </div>
 </div>
 
@@ -1025,6 +1039,7 @@ document.addEventListener("keydown", e => {
     $("pickModal").style.display = "none"; pickTarget = null;
     $("menuSheet").style.display = "none";
     $("importSheet").style.display = "none";
+    $("deleteSheet").style.display = "none";
     delete document.body.dataset.roster; return; }
   if (!editable) return;
   if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
@@ -1526,12 +1541,15 @@ function renderChips(){
   $("chips").innerHTML = list.length
     ? list.map(([id,g]) => {
         const c = famColor(g.name);
+        /* × here UNSEATS only - deleting lives in the Delete guests section
+           (Ross: accidental deletes are bad) */
         return `<div class="chip" data-guest="${id}"` +
           `${c ? ` style="border-left:4px solid ${c}"` : ""}>` +
           `<span class="grip">&#8942;&#8942;</span>` +
           `<span class="nm">${esc(g.name)}</span>` +
           `<span class="loc">${g.table ? esc(loc.get(id)||"") : ""}</span>` +
-          `<button class="del" data-del="${id}" title="Remove from the guest list everywhere">&times;</button></div>`;
+          (g.table ? `<button class="del" data-unseat="${id}" title="Unseat">&times;</button>` : "") +
+          `</div>`;
       }).join("")
     : `<p class="emptymsg">${state.guests.size
         ? (q ? "No match." : "Everyone is seated. Bravo.")
@@ -1745,6 +1763,64 @@ $("importSheet").addEventListener("click", e => {
   if (e.target === $("importSheet")) $("importSheet").style.display = "none";
 });
 $("rosterClose").onclick = () => { delete document.body.dataset.roster; };
+
+/* ---- Delete guests: the ONLY place a guest leaves the list (deliberate,
+   confirmed, undoable) ---- */
+const delSel = new Set();
+function opDeleteMany(ids){
+  return commit(ids.filter(id => state.guests.has(id)).map(id => guestPatch(id, null)));
+}
+function renderDelList(){
+  const q = $("delSearch").value.trim().toLowerCase();
+  const list = [...state.guests.entries()]
+    .filter(([,g]) => !q || g.name.toLowerCase().includes(q))
+    .sort((a,b) => a[1].name.localeCompare(b[1].name));
+  $("delList").innerHTML = list.length ? "" : `<p class="emptymsg">No guests.</p>`;
+  for (const [gid, g] of list){
+    const row = document.createElement("label");
+    row.className = "pickrow";
+    row.style.cursor = "pointer";
+    const c = famColor(g.name);
+    row.innerHTML = `<input type="checkbox" ${delSel.has(gid) ? "checked" : ""}>` +
+      (c ? `<span class="fam" style="background:${c}"></span>` : "") +
+      `<span>${esc(g.name)}</span>` +
+      `<span class="loc">${g.table ? esc(tName(g.table)) : ""}</span>`;
+    row.querySelector("input").addEventListener("change", ev => {
+      ev.target.checked ? delSel.add(gid) : delSel.delete(gid);
+      updateDelGo();
+    });
+    $("delList").appendChild(row);
+  }
+  updateDelGo();
+}
+function updateDelGo(){
+  $("delGo").disabled = !delSel.size;
+  $("delGo").textContent = delSel.size
+    ? `Delete ${delSel.size} guest${delSel.size > 1 ? "s" : ""}` : "Delete selected";
+}
+$("delBtn").onclick = () => {
+  if (!editable) return;
+  delSel.clear();
+  $("delSearch").value = "";
+  renderDelList();
+  $("deleteSheet").style.display = "flex";
+};
+$("delSearch").addEventListener("input", renderDelList);
+$("delClose").onclick = () => $("deleteSheet").style.display = "none";
+$("deleteSheet").addEventListener("click", e => {
+  if (e.target === $("deleteSheet")) $("deleteSheet").style.display = "none";
+});
+$("delGo").onclick = () => {
+  if (!delSel.size) return;
+  const names = [...delSel].map(id => state.guests.get(id)?.name).filter(Boolean);
+  toast(`Delete ${names.slice(0,3).join(", ")}${names.length > 3 ? ` and ${names.length-3} more` : ""}?`,
+    "Yes, delete", () => {
+      if (opDeleteMany([...delSel]))
+        toast(`Deleted ${names.length} guest${names.length > 1 ? "s" : ""}. Undo with ↶.`);
+      delSel.clear();
+      $("deleteSheet").style.display = "none";
+    });
+};
 function startRename(span){
   const tableId = span.dataset.rename;
   const input = document.createElement("input");
@@ -2022,10 +2098,12 @@ function renderZoom(){
       `fill="${g ? C.ink : "#9B9C93"}">${label}</text>`;
     const leader = opts.leader
       ? `<line x1="${cx}" y1="${cy+9}" x2="${opts.tx}" y2="${opts.ty-13}" stroke="#D8D7CF"/>` : "";
+    /* generous, explicitly hit-testable targets - a fingertip, not a dot */
     const hit = opts.anchor === "middle"
-      ? `<rect class="hit" x="${cx-26}" y="${cy-12}" width="52" height="${opts.ty-cy+22}" rx="8" fill="transparent"/>`
-      : `<rect class="hit" x="${opts.anchor === "end" ? opts.tx-150 : cx-12}" y="${cy-17}" ` +
-        `width="176" height="34" rx="8" fill="transparent"/>`;
+      ? `<rect class="hit" x="${cx-32}" y="${cy-14}" width="64" height="${opts.ty-cy+26}" rx="8" ` +
+        `fill="transparent" pointer-events="all"/>`
+      : `<rect class="hit" x="${opts.anchor === "end" ? opts.tx-160 : cx-14}" y="${cy-21}" ` +
+        `width="190" height="42" rx="8" fill="transparent" pointer-events="all"/>`;
     return `<g ${attrs}>${hit}${leader}${dot}${text}</g>`;
   };
   let svg;
@@ -2039,7 +2117,7 @@ function renderZoom(){
       inner += dotSvg(i, rx + 6, spread(L, i), {tx: rx - 14, ty: spread(L, i) + 5, anchor: "end"});
     for (let i = 0; i < R; i++)
       inner += dotSvg(L + i, rx + rw - 6, spread(R, i), {tx: rx + rw + 14, ty: spread(R, i) + 5, anchor: "start"});
-    svg = `<svg viewBox="0 0 340 ${H}" preserveAspectRatio="xMidYMid meet">
+    svg = `<svg viewBox="0 0 340 ${H}" preserveAspectRatio="xMidYMid meet" data-drop="${t.id}">
       <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
         fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
       <text x="${rx+rw/2}" y="${ry+rh/2}" fill="${isFull ? "#fff" : C.bronze}" font-size="15"
@@ -2055,7 +2133,7 @@ function renderZoom(){
       const ty = ry + rh + 46 + (i % 2) * 42;   /* staggered rows so names fit */
       inner += dotSvg(i, cx, ry + rh - 2, {tx: cx, ty, anchor: "middle", leader: true});
     }
-    svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet">
+    svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet" data-drop="${t.id}">
       <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
         fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
       <text x="${rx+rw/2}" y="${ry+rh/2-6}" fill="${isFull ? "#fff" : C.bronze}" font-size="16"
