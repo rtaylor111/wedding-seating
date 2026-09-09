@@ -324,8 +324,10 @@
       height:var(--drawerH,64px);transition:height .22s ease;overflow:hidden;
       padding:0 14px calc(10px + env(safe-area-inset-bottom));}
     body[data-drawer="peek"] .guests{--drawerH:64px;}
-    body[data-drawer="half"] .guests{--drawerH:52dvh;}
-    body[data-drawer="tall"] .guests{--drawerH:min(84dvh,var(--vvh,84dvh));}
+    body[data-drawer="half"] .guests{--drawerH:34dvh;}   /* a third of the page, no more */
+    /* while typing in search the drawer may rise so results clear the keyboard,
+       then drops back to the third on blur */
+    body[data-drawer="half"] .guests:focus-within{--drawerH:min(60dvh,var(--vvh,60dvh));}
     #drawerBar{display:block;flex:0 0 auto;padding:7px 0 4px;cursor:grab;
       touch-action:none;}
     #drawerBar .grab{width:40px;height:4.5px;border-radius:3px;background:var(--line);
@@ -1369,10 +1371,12 @@ let MAXW = VIEW0.w;
 function clampView(){
   view.w = Math.max(160, Math.min(MAXW, view.w));
   view.h = view.w * boxAspect();
-  const minX = VIEW0.x - 40, maxX = VIEW0.x + VIEW0.w + 40 - view.w;
+  /* no slack: the plan can only pan when the view is tighter than the plan,
+     i.e. only when actually zoomed in (Ross: no side-to-side at fit) */
+  const minX = VIEW0.x, maxX = VIEW0.x + VIEW0.w - view.w;
   view.x = maxX < minX ? VIEW0.x - (view.w - VIEW0.w)/2
     : Math.max(minX, Math.min(maxX, view.x));
-  const minY = VIEW0.y - 40, maxY = VIEW0.y + VIEW0.h + 40 - view.h;
+  const minY = VIEW0.y, maxY = VIEW0.y + VIEW0.h - view.h;
   view.y = maxY < minY ? VIEW0.y : Math.max(minY, Math.min(maxY, view.y));
 }
 /* fit = whole plan visible in the part of the map the drawer doesn't cover */
@@ -1647,7 +1651,7 @@ $("pickModal").addEventListener("click", e => {
 });
 
 /* ============ mobile: drawer, menu, import sheet, roster sheet ============ */
-const DRAWER_STATES = ["peek","half","tall"];
+const DRAWER_STATES = ["peek","half"];   /* half = a third of the page (Ross's cap) */
 function setDrawer(s){ document.body.dataset.drawer = s; }
 const getDrawer = () => document.body.dataset.drawer || "peek";
 
@@ -1675,11 +1679,10 @@ $("drawerBar").addEventListener("pointerup", e => {
   dbar = null;
   const idx = DRAWER_STATES.indexOf(getDrawer());
   if (Math.abs(dy) < 12){ setDrawer(idx === 0 ? "half" : "peek"); return; }
-  const step = dy < -140 ? 2 : dy < 0 ? 1 : dy > 140 ? -2 : -1;
-  setDrawer(DRAWER_STATES[Math.max(0, Math.min(2, idx + step))]);
+  setDrawer(DRAWER_STATES[Math.max(0, Math.min(DRAWER_STATES.length-1, idx + (dy < 0 ? 1 : -1)))]);
 });
 $("drawerBar").addEventListener("pointercancel", () => { dbar = null; });
-$("search").addEventListener("focus", () => { if (isMobile()) setDrawer("tall"); });
+/* search focus: the CSS :focus-within rule lifts the drawer just while typing */
 if (window.visualViewport){
   visualViewport.addEventListener("resize", () =>
     document.documentElement.style.setProperty("--vvh", visualViewport.height + "px"));
