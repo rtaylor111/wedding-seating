@@ -139,8 +139,8 @@
   .rrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .card .empty{color:var(--muted);font-style:italic;font-size:13px;margin:6px 0 0;}
 
-  /* ---- drag ghost: a running legionary carrying the guest ---- */
-  #ghost{position:fixed;z-index:20;pointer-events:none;display:none;text-align:center;}
+  /* ---- drag ghost: the runner carrying the guest - above every sheet ---- */
+  #ghost{position:fixed;z-index:56;pointer-events:none;display:none;text-align:center;}
   #ghost .gname{display:inline-block;background:#fff;border:1px solid var(--gold);
     border-radius:7px;padding:2px 9px;font:700 12.5px Karla,sans-serif;
     box-shadow:0 4px 12px rgba(35,37,43,.18);white-space:nowrap;max-width:190px;
@@ -440,9 +440,9 @@
       </div>
     </div>
     <input type="search" id="search" placeholder="Search guests&hellip;">
+    <h2 id="listHdr">Guest list</h2>
     <div style="display:flex;align-items:center;gap:6px">
-      <h2 id="listHdr" style="flex:1">Guest list</h2>
-      <div class="imports" id="listTabs">
+      <div class="imports" id="listTabs" style="flex:1">
         <button data-view="all" class="on">All</button>
         <button data-view="unseated">Unseated</button>
         <button data-view="seated">Seated</button>
@@ -515,6 +515,8 @@
       <button class="hbtn mclose" id="verClose">&times;</button>
     </div>
     <div class="verlist" id="verList"><p class="emptymsg">Loading&hellip;</p></div>
+    <p class="pickhead">ON THIS DEVICE (survives anything the cloud does)</p>
+    <div class="verlist" id="verLocal" style="max-height:150px"></div>
     <div class="mrow">
       <button class="hbtn" id="bakSave" style="font-size:13px;flex:1">Download backup</button>
       <button class="hbtn filebtn" style="font-size:13px;flex:1">Restore backup
@@ -651,7 +653,10 @@ let serverVersion = 0;
 let pin = "";
 try { pin = localStorage.getItem(LS_PIN) || ""; } catch(_){}
 let editable = false, online = false;
-let seatIcon = "centurion", colorFams = false, runner = "legionary";
+let seatIcon = "centurion", colorFams = false;
+/* the drag runner is a LOCAL, per-device choice (Ross) - never synced */
+let runner = "legionary";
+try{ runner = localStorage.getItem("wsRunner") || "legionary"; }catch(_){}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g,
@@ -791,7 +796,6 @@ function syncSettingsUi(){
   const ui = state.settings.ui || {};
   seatIcon = HELMETS[ui.seatIcon] ? ui.seatIcon : "centurion";
   colorFams = !!ui.colorBySurname;
-  runner = RUNNERS[ui.runner] ? ui.runner : "legionary";
   renderIconPick();
 }
 async function refetch(){
@@ -1103,7 +1107,7 @@ const tablePatch = (tableId, nextCfg) => {
   return {kind:"table", id:tableId, before: cur ? {...cur} : null,
     after: Object.keys(next).length ? next : null};
 };
-const settingsBody = () => ({seatIcon, colorBySurname: colorFams, runner});
+const settingsBody = () => ({seatIcon, colorBySurname: colorFams});
 
 /* ============ operations ============ */
 function opAddGuests(names){
@@ -1202,9 +1206,11 @@ function opSetSeatsAll(n){
   if (!patches.length){ toast(`All guest tables are already on ${n} seats.`); return; }
   if (commit(patches)) toast(`All guest tables set to ${n} seats.`);
 }
-/* the precondition must be null when the server has never stored settings.ui,
-   or the very first settings write conflicts forever (stage-2 review Blocker 1) */
-const settingsBefore = () => state.settings.ui ? settingsBody() : null;
+/* the precondition must echo EXACTLY what the server holds - byte-for-byte,
+   whatever fields it has or lacks. Rebuilding it from local variables broke
+   every settings write the moment a new field was added (Ross's "someone
+   else is editing" ghost). */
+const settingsBefore = () => state.settings.ui ? {...state.settings.ui} : null;
 function opSetIcon(k){
   if (!HELMETS[k] || k === seatIcon) return;
   commit([{kind:"settings", id:"ui", before:settingsBefore(),
@@ -1212,8 +1218,9 @@ function opSetIcon(k){
 }
 function opSetRunner(k){
   if (!RUNNERS[k] || k === runner) return;
-  commit([{kind:"settings", id:"ui", before:settingsBefore(),
-    after:{...settingsBody(), runner:k}}]);
+  runner = k;                                 /* local only - never synced */
+  try{ localStorage.setItem("wsRunner", k); }catch(_){}
+  renderIconPick();
 }
 function opToggleFams(){
   const turningOn = !colorFams;
@@ -1929,6 +1936,8 @@ function liftDrag(){
   $("dropHint").textContent = "Drop on a table…";
   hideTip();
   if (navigator.vibrate) navigator.vibrate(10);
+  /* the picked-up guest fades at their seat while the runner carries them */
+  if (drag.srcEl){ try{ drag.srcEl.style.opacity = "0.25"; }catch(_){} }
   /* lifting from the drawer exposes the map; the drawer is a fixed overlay,
      so the map's layout box - and everything under the finger - stays put */
   if (isMobile() && drag.fromDrawer) setDrawer("peek");
@@ -1941,7 +1950,7 @@ document.addEventListener("pointerdown", e => {
   if (!src) return;
   const gid = src.dataset ? src.dataset.guest : src.getAttribute("data-guest");
   if (!gid) return;
-  drag = {gid, pid:e.pointerId, ptype:e.pointerType,
+  drag = {gid, pid:e.pointerId, ptype:e.pointerType, srcEl: src,
     startX:e.clientX, startY:e.clientY, active:false, lpTimer:null,
     fromDrawer: !!e.target.closest("#guestPanel"),
     fromZoom: !!e.target.closest("#zBody")};
@@ -2156,8 +2165,7 @@ function renderZoom(){
       (g ? ` data-guest="${gid}"` : (editable ? ` data-pick="${t.id}:${i}"` : ""));
     let pw, ph, px, py;
     if (opts.anchor === "middle"){ pw = 104; ph = 32; px = opts.tx - pw/2; py = opts.ty - 22; }
-    else { pw = 172; ph = 38; py = cy - ph/2;
-      px = opts.anchor === "end" ? cx - 16 - pw : cx + 16; }
+    else { pw = 172; ph = 38; py = cy - ph/2; px = opts.px; }
     const pill = `<rect class="hit" x="${px}" y="${py}" width="${pw}" height="${ph}" rx="10" ` +
       `fill="${g ? "#F6F6F4" : "#FFFFFF"}" stroke="${g ? fam : "#C9C8C0"}" ` +
       `stroke-width="${g ? 2 : 1.5}"${g ? "" : ' stroke-dasharray="4 3"'} pointer-events="all"/>`;
@@ -2175,7 +2183,7 @@ function renderZoom(){
       ? `<text x="${px + 10}" y="${py + ph/2 + 5}" font-size="12" fill="${C.muted}" ` +
         `font-family="Karla,sans-serif" pointer-events="none">&#8942;&#8942;</text>` : "";
     const leader = opts.leader
-      ? `<line x1="${cx}" y1="${cy + 9}" x2="${px + pw/2}" y2="${py - 2}" stroke="#D8D7CF"/>` : "";
+      ? `<line x1="${cx}" y1="${opts.ly ?? cy + 9}" x2="${px + pw/2}" y2="${py - 2}" stroke="#D8D7CF"/>` : "";
     return `<g ${attrs}>${leader}${pill}${grip}${dot}${text}</g>`;
   };
   let svg;
@@ -2184,11 +2192,12 @@ function renderZoom(){
     const H = Math.max(320, Math.max(L, R) * 58 + 60);
     const rx = 185, rw = 90, ry = 24, rh = H - 48;
     const spread = (cnt, i) => cnt === 1 ? ry + rh/2 : ry + 32 + i * (rh - 64) / (cnt - 1);
+    /* dots sit fully INSIDE the table; pills sit fully outside it */
     let inner = "";
     for (let i = 0; i < L; i++)
-      inner += dotSvg(i, rx + 6, spread(L, i), {tx: rx - 14, ty: spread(L, i) + 5, anchor: "end"});
+      inner += dotSvg(i, rx + 16, spread(L, i), {px: rx - 10 - 172, anchor: "end"});
     for (let i = 0; i < R; i++)
-      inner += dotSvg(L + i, rx + rw - 6, spread(R, i), {tx: rx + rw + 14, ty: spread(R, i) + 5, anchor: "start"});
+      inner += dotSvg(L + i, rx + rw - 16, spread(R, i), {px: rx + rw + 10, anchor: "start"});
     svg = `<svg viewBox="0 0 460 ${H}" preserveAspectRatio="xMidYMid meet">
       <g data-drop="${t.id}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
         fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
@@ -2203,7 +2212,9 @@ function renderZoom(){
     for (let i = 0; i < p.n; i++){
       const cx = p.n === 1 ? rx + rw/2 : rx + 26 + i * (rw - 52) / (p.n - 1);
       const ty = ry + rh + 46 + (i % 2) * 42;   /* staggered rows so names fit */
-      inner += dotSvg(i, cx, ry + rh - 2, {tx: cx, ty, anchor: "middle", leader: true});
+      /* dot fully inside the table; leader starts at the table's edge */
+      inner += dotSvg(i, cx, ry + rh - 16, {tx: cx, ty, anchor: "middle",
+        leader: true, ly: ry + rh + 2});
     }
     svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet">
       <g data-drop="${t.id}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
@@ -2339,6 +2350,7 @@ const RUNNERS = {
 };
 const RUNNER_TITLES = {legionary:"Legionary", shieldmaiden:"Shieldmaiden", spartan:"Spartan"};
 function renderIconPick(){
+  if (!RUNNERS[runner]) runner = "legionary";   /* stale/invalid stored choice */
   const helmHtml = Object.keys(HELMETS).map(k =>
     `<button data-icon="${k}" class="${k===seatIcon?"on":""}" title="${HELMET_TITLES[k]}">${HELMETS[k]}</button>`).join("");
   document.querySelectorAll(".iconpick").forEach(elm => { elm.innerHTML = helmHtml; });
@@ -2384,6 +2396,7 @@ $("plan").addEventListener("pointerout", e => {
 /* ============ reset: unseat everyone (guest list untouched) ============ */
 $("resetBtn").onclick = () => resetFlow();
 async function doReset(){
+  saveLocalSnap("Auto - before reset");
   try{ await saveVersion("Auto - before reset"); }
   catch(_){ toast("Couldn't save the safety version - reset cancelled."); return; }
   const patches = [];
@@ -2405,8 +2418,47 @@ async function saveVersion(label){
   if (res.error) throw res;
   return res.id;
 }
+/* ---- LOCAL device snapshots: insurance the cloud can never touch (Ross).
+   Kept in this browser only; taken on load, every 5 minutes when the plan
+   changed, before any restore/reset, and when the tab closes. ---- */
+const LS_SNAPS = SANDBOX ? "wsLocalSnapsTest" : "wsLocalSnaps";
+let lastSnapJson = "";
+function localSnaps(){
+  try{ return JSON.parse(localStorage.getItem(LS_SNAPS) || "[]"); }catch(_){ return []; }
+}
+function saveLocalSnap(label){
+  try{
+    const body = {
+      label, at: Date.now(),
+      guests: Object.fromEntries([...state.guests.entries()].map(([id,g]) => [id, guestBody(g)])),
+      tables: Object.fromEntries([...state.tableCfg.entries()].map(([id,c]) => [id, {...c}])),
+      settings: JSON.parse(JSON.stringify(state.settings)),
+    };
+    const j = JSON.stringify(body.guests) + JSON.stringify(body.tables);
+    if (j === lastSnapJson) return;          /* nothing changed since the last one */
+    lastSnapJson = j;
+    const snaps = localSnaps();
+    snaps.unshift(body);
+    localStorage.setItem(LS_SNAPS, JSON.stringify(snaps.slice(0, 12)));
+  }catch(_){ /* quota or private mode: the cloud versions still exist */ }
+}
+setInterval(() => { if (state.guests.size) saveLocalSnap("Auto - every 5 min"); }, 300000);
+addEventListener("pagehide", () => { if (state.guests.size) saveLocalSnap("Auto - on close"); });
+function renderLocalVersions(){
+  const snaps = localSnaps();
+  $("verLocal").innerHTML = !snaps.length
+    ? `<p class="emptymsg">No device snapshots yet.</p>`
+    : snaps.map((v, i) => {
+        const when = new Date(v.at).toLocaleString(undefined,
+          {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"});
+        return `<div class="verrow"><div class="vl"><b>${esc(v.label||"Snapshot")}</b>` +
+          `<span>${when} &middot; ${Object.keys(v.guests||{}).length} guests</span></div>` +
+          `<button data-lrestore="${i}">Restore</button></div>`;
+      }).join("");
+}
 async function openVersions(){
   $("verModal").style.display = "flex";
+  renderLocalVersions();
   $("verList").innerHTML = `<p class="emptymsg">Loading&hellip;</p>`;
   try{
     const r = await getJson("?fn=versions");
@@ -2457,14 +2509,14 @@ function snapshotDiff(b){
   const snapUi = (b.settings && b.settings.ui) || null;
   if (snapUi){
     const snapSet = {seatIcon: HELMETS[snapUi.seatIcon] ? snapUi.seatIcon : seatIcon,
-      colorBySurname: !!snapUi.colorBySurname,
-      runner: RUNNERS[snapUi.runner] ? snapUi.runner : runner};
+      colorBySurname: !!snapUi.colorBySurname};
     if (JSON.stringify(settingsBody()) !== JSON.stringify(snapSet))
       patches.push({kind:"settings", id:"ui", before:settingsBefore(), after:snapSet});
   }
   return patches;
 }
 async function applySnapshot(b, what){
+  saveLocalSnap(`Auto - before ${what}`);      /* the cloud-proof copy first */
   try{ await saveVersion(`Auto - before ${what}`); }
   catch(_){ toast("Couldn't save the safety version - restore cancelled."); return; }
   const patches = snapshotDiff(b);
@@ -2485,6 +2537,11 @@ $("verModal").addEventListener("click", e => {
   if (e.target === $("verModal")) $("verModal").style.display = "none";
   const r = e.target.closest("[data-restore]");
   if (r && editable) restoreVersion(r.dataset.restore);
+  const lr = e.target.closest("[data-lrestore]");
+  if (lr && editable){
+    const snap = localSnaps()[+lr.dataset.lrestore];
+    if (snap) applySnapshot(snap, "the device snapshot");
+  }
 });
 $("verSave").onclick = async () => {
   if (!editable) return;
@@ -2636,6 +2693,7 @@ render();
 renderIconPick();
 (async () => {
   await refetch();
+  if (state.guests.size) saveLocalSnap("Auto - on load");
   if (pin && online) await verifyPin(pin, true);
 })();
 </script>
