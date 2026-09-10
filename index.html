@@ -440,7 +440,7 @@
         <button class="addbtn" id="typeAdd">Add</button>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:6px">
+    <div id="searchRow" style="display:flex;align-items:center;gap:6px">
       <input type="search" id="search" placeholder="Search guests&hellip;" style="flex:1;min-width:0">
       <button class="hbtn editonly" id="delBtn" style="font-size:12px"
         title="Delete guests from the list">Delete&hellip;</button>
@@ -1766,7 +1766,9 @@ function dockImports(){
   const nodes = [$("importTabs"), $("tab-paste"), $("tab-xlsx"), $("tab-type")];
   if (isMobile()) nodes.forEach(n => $("importDock").appendChild(n));
   else {
-    const anchor = $("search");
+    /* dock before the search ROW, which is the anchor's PARENT - the search
+       input itself is no longer a direct child of the panel */
+    const anchor = $("searchRow");
     nodes.forEach(n => $("guestPanel").insertBefore(n, anchor));
   }
 }
