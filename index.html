@@ -1000,10 +1000,11 @@ function setEditable(on){
   paintSync();
 }
 async function verifyPin(candidate, silent){
+  let res;
   try{
     /* fn:"ping" checks the code without writing; older server versions
        answer unknown_fn, and then the empty-apply fallback still works */
-    let res = await rawPost({pin:candidate, fn:"ping"});
+    res = await rawPost({pin:candidate, fn:"ping"});
     if (res.error === "unknown_fn"){
       res = await rawPost({pin:candidate, fn:"apply", baseVersion:serverVersion, patches:[]});
       if (res.error === "stale"){
@@ -1011,31 +1012,43 @@ async function verifyPin(candidate, silent){
         res = await rawPost({pin:candidate, fn:"apply", baseVersion:serverVersion, patches:[]});
       }
     }
-    if (res.error === "pin"){
-      if (silent){
-        /* a stored code that stopped working: forget it, say so once, and stop
-           burning rate-limit attempts on every page load */
-        try{ localStorage.removeItem(LS_PIN); }catch(_){}
-        pin = "";
-        toast("Your saved edit code is no longer valid - enter the new one.");
-      } else toast("Wrong edit code.");
-      return false;
-    }
-    if (res.error === "locked"){
-      toast("Too many tries recently - codes are locked for a few minutes.");
-      return false;
-    }
-    if (res.error) throw res;
-    pin = candidate;
-    try{ localStorage.setItem(LS_PIN, pin); }catch(_){}
-    setEditable(true);
-    setSync(true);
-    if (!silent) toast("Editing unlocked on this device.");
-    return true;
   }catch(_){
+    /* OFFLINE: no way to ask the server. Trust a code that was verified good
+       on THIS device before (stored in LS_PIN). Edits queue and the server
+       re-checks the code on every write when the signal returns - if it was
+       changed meanwhile, that first sync rejects and re-locks. */
+    let known = ""; try{ known = localStorage.getItem(LS_PIN) || ""; }catch(_){}
+    if (candidate && candidate === known){
+      pin = candidate;
+      setEditable(true);
+      if (!silent) toast("Offline - unlocked from your saved code. Edits sync when you reconnect.");
+      return true;
+    }
+    if (!silent) toast("Can't check the code offline - connect once to unlock on this device.");
+    return false;
+  }
+  if (res.error === "pin"){
+    if (silent){
+      try{ localStorage.removeItem(LS_PIN); }catch(_){}
+      pin = "";
+      toast("Your saved edit code is no longer valid - enter the new one.");
+    } else toast("Wrong edit code.");
+    return false;
+  }
+  if (res.error === "locked"){
+    toast("Too many tries recently - codes are locked for a few minutes.");
+    return false;
+  }
+  if (res.error){          /* unknown reply: treat like unreachable */
     if (!silent) toast("Couldn't reach the plan to check the code - try again.");
     return false;
   }
+  pin = candidate;
+  try{ localStorage.setItem(LS_PIN, pin); }catch(_){}
+  setEditable(true);
+  setSync(true);
+  if (!silent) toast("Editing unlocked on this device.");
+  return true;
 }
 $("pinBtn").onclick = () => { $("pinModal").style.display = "flex"; $("pinInput").focus(); };
 $("pinClose").onclick = () => $("pinModal").style.display = "none";
@@ -2744,9 +2757,11 @@ try{
 }catch(_){}
 (async () => {
   await refetch();                       /* fails quietly offline - local stays */
+  /* unlock from the saved code BEFORE flushing, so queued offline edits carry
+     the pin; works online (server-checked) or offline (trusts the saved code) */
+  if (pin) await verifyPin(pin, true);
   await flushOutbox();                   /* push anything that survived a reload */
   if (state.guests.size) saveLocalSnap("Auto - on load");
-  if (pin && online) await verifyPin(pin, true);
 })();
 </script>
 </body>
