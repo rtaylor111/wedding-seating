@@ -613,6 +613,15 @@ const DB = SANDBOX ? "test" : "";
 const LS_PIN = SANDBOX ? "wsEditPinTest" : "wsEditPin";
 const mobileMQ = matchMedia("(max-width:820px)");
 const isMobile = () => mobileMQ.matches;
+/* offline app shell: register the service worker so the page loads with no
+   signal (silently skipped on file:// or where SWs are unavailable) */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+/* persisted working state + unsent outbox, so a reopen offline still has the
+   plan and any edits made offline survive a reload (Ross) */
+const LS_STATE = SANDBOX ? "wsStateTest" : "wsState";
+const LS_OUTBOX = SANDBOX ? "wsOutboxTest" : "wsOutbox";
 if (SANDBOX){
   document.title = "TEST - Wedding Seating Planner";
   document.body.insertAdjacentHTML("afterbegin",
@@ -791,7 +800,32 @@ function adopt(version, s){
   for (const sent of pendingSent)
     for (const p of sent) applyPatchLocal(p, "after");
   syncSettingsUi();
+  persistLocal();
   render();
+}
+/* the whole working plan + version, kept in this browser so a reopen (even
+   offline) boots from it instantly rather than a blank "reconnecting" */
+function stateForStorage(){
+  return {
+    version: serverVersion,
+    guests: Object.fromEntries([...state.guests.entries()].map(([id,g]) => [id, guestBody(g)])),
+    tables: Object.fromEntries([...state.tableCfg.entries()].map(([id,c]) => [id, {...c}])),
+    settings: JSON.parse(JSON.stringify(state.settings)),
+  };
+}
+function persistLocal(){
+  try{ localStorage.setItem(LS_STATE, JSON.stringify(stateForStorage())); }catch(_){}
+}
+function persistOutbox(){
+  try{ localStorage.setItem(LS_OUTBOX, JSON.stringify(outbox.map(o => o.sent))); }catch(_){}
+}
+function loadLocalState(){
+  try{
+    const raw = localStorage.getItem(LS_STATE);
+    if (!raw) return false;
+    adopt(JSON.parse(raw).version || 0, JSON.parse(raw));
+    return true;
+  }catch(_){ return false; }
 }
 function syncSettingsUi(){
   const ui = state.settings.ui || {};
@@ -854,6 +888,8 @@ function queuePost(sent, meta){
   outbox.push({sent, meta});
   pendingSent.push(sent);
   postsInFlight = outbox.length;
+  persistLocal();          /* the change is on screen - save it before any network */
+  persistOutbox();
   paintSync();
   flushOutbox();
 }
@@ -865,9 +901,10 @@ async function flushOutbox(){
     try{
       await sendBatch(item.sent, item.meta);   /* throws only on network failure */
       outbox.shift();
+      persistOutbox();
       setSync(true);
     }catch(err){
-      if (err && err.serverHandled){ outbox.shift(); continue; }
+      if (err && err.serverHandled){ outbox.shift(); persistOutbox(); continue; }
       setSync(false);                          /* network: keep it, retry later */
       break;
     }
@@ -879,6 +916,7 @@ async function flushOutbox(){
 }
 setInterval(() => { if (outbox.length && !flushing) flushOutbox(); }, 5000);
 addEventListener("online", () => flushOutbox());
+addEventListener("pagehide", persistOutbox);   /* survive a close mid-sync */
 /* name a conflict from the patches WE sent, never from post-adopt state */
 function conflictNames(conflicts, sent){
   return conflicts.slice(0,3).map(c => {
@@ -2693,10 +2731,20 @@ function exportPdf(){
 
 /* ============ boot ============ */
 setEditable(false);
+/* show the last-known plan from this device IMMEDIATELY - works with no
+   signal - then reconcile with the server in the background */
+loadLocalState();
 render();
 renderIconPick();
+/* re-queue any edits that were still unsent when the tab last closed */
+try{
+  const saved = JSON.parse(localStorage.getItem(LS_OUTBOX) || "[]");
+  for (const sent of saved){ outbox.push({sent, meta:null}); pendingSent.push(sent); }
+  postsInFlight = outbox.length;
+}catch(_){}
 (async () => {
-  await refetch();
+  await refetch();                       /* fails quietly offline - local stays */
+  await flushOutbox();                   /* push anything that survived a reload */
   if (state.guests.size) saveLocalSnap("Auto - on load");
   if (pin && online) await verifyPin(pin, true);
 })();
