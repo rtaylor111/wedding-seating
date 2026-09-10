@@ -365,8 +365,9 @@
     /* hide the import UI only while it sits IN the drawer - once dockImports()
        moves it to the Add-guests sheet it must show (review blocker: the rule
        was keyed on ids and followed the nodes into the sheet) */
-    .guests > h2, .guests #importTabs, .guests #tab-paste,
+    .guests > h2:not(#listHdr), .guests #importTabs, .guests #tab-paste,
     .guests #tab-xlsx, .guests #tab-type{display:none;}
+    #listHdr{font-size:13px;}
     .chips{flex:1;max-height:none;touch-action:pan-y;}
     .guests.dropcue #drawerBar .peekrow{color:var(--gold);}
 
@@ -439,16 +440,16 @@
         <button class="addbtn" id="typeAdd">Add</button>
       </div>
     </div>
-    <input type="search" id="search" placeholder="Search guests&hellip;">
-    <h2 id="listHdr">Guest list</h2>
     <div style="display:flex;align-items:center;gap:6px">
-      <div class="imports" id="listTabs" style="flex:1">
-        <button data-view="all" class="on">All</button>
-        <button data-view="unseated">Unseated</button>
-        <button data-view="seated">Seated</button>
-      </div>
+      <input type="search" id="search" placeholder="Search guests&hellip;" style="flex:1;min-width:0">
       <button class="hbtn editonly" id="delBtn" style="font-size:12px"
         title="Delete guests from the list">Delete&hellip;</button>
+    </div>
+    <h2 id="listHdr">Guest list</h2>
+    <div class="imports" id="listTabs">
+      <button data-view="all" class="on">All</button>
+      <button data-view="unseated">Unseated</button>
+      <button data-view="seated">Seated</button>
     </div>
     <div class="chips" id="chips"></div>
   </aside>
@@ -1576,11 +1577,12 @@ function renderChips(){
   if (guestView === "seated") list = list.filter(([,g]) => !!g.table);
   list.sort((a,b) => (!!a[1].table - !!b[1].table) || a[1].name.localeCompare(b[1].name));
   if (q) list = list.filter(([,g]) => g.name.toLowerCase().includes(q));
-  $("listHdr").textContent = `Guest list (${state.guests.size})`;
+  /* counts live HERE, never in the tabs - tab widths stay constant so the
+     row can never crowd (Ross) */
   const unN = unseated().length;
-  $("listTabs").querySelector('[data-view="unseated"]').textContent = `Unseated (${unN})`;
-  $("listTabs").querySelector('[data-view="seated"]').textContent =
-    `Seated (${state.guests.size - unN})`;
+  $("listHdr").textContent = state.guests.size
+    ? `Guest list · ${unN} unseated of ${state.guests.size}`
+    : "Guest list";
   /* the PEEK bar mirrors the ACTIVE filter, never a stale label (review S7) */
   $("peekLabel").textContent =
     guestView === "seated" ? `Seated (${state.guests.size - unN})` :
