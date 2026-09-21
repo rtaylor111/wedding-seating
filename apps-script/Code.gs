@@ -59,6 +59,13 @@ function writeState_(state, version, sfx) {
   sh.getRange("B1").setValue(version);
 }
 
+/* drop the volatile seatedAt before a precondition compare */
+function noTs_(v) {
+  if (!v || typeof v !== "object") return v;
+  var o = {}; for (var k in v) if (k !== "seatedAt") o[k] = v[k];
+  return o;
+}
+
 /* canonical JSON (sorted keys) so precondition comparison is key-order-proof */
 function canon_(x) {
   if (x === null || x === undefined) return "null";
@@ -156,7 +163,10 @@ function apply_(body, sfx) {
     var id = String(p.id || "");
     if (!ID_RE.test(id)) continue;
     var curVal = cur.state[store].hasOwnProperty(id) ? cur.state[store][id] : null;
-    if ("before" in p && canon_(curVal) !== canon_(p.before)) {
+    // conflict check ignores seatedAt: it's a cosmetic ordering timestamp that
+    // drifts between devices/sessions and otherwise causes phantom "someone
+    // else changed this" conflicts on an unchanged guest.
+    if ("before" in p && canon_(noTs_(curVal)) !== canon_(noTs_(p.before))) {
       conflicts.push({ kind: p.kind, id: id });
       continue;
     }
