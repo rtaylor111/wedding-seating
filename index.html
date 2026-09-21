@@ -1533,9 +1533,26 @@ function renderPlan(){
      the plan centre. Drag/drop is unaffected - it resolves hits by screen
      position (elementFromPoint), and pan/zoom act on the untransformed svg. */
   if (planRot % 360){
-    const rootG = el("g", {transform:`rotate(${planRot} 300 360)`});
-    while (svg.firstChild) rootG.appendChild(svg.firstChild);
-    svg.appendChild(rootG);
+    /* rotate the GEOMETRY only; lift every label to a non-rotated overlay,
+       positioned at its rotated anchor but keeping its drawn orientation
+       (upright stays upright, vertical stays vertical) */
+    const rad = planRot*Math.PI/180, cos = Math.cos(rad), sin = Math.sin(rad);
+    const rot = (x,y) => [300 + (x-300)*cos - (y-360)*sin, 360 + (x-300)*sin + (y-360)*cos];
+    const geomG = el("g", {transform:`rotate(${planRot} 300 360)`});
+    while (svg.firstChild) geomG.appendChild(svg.firstChild);
+    svg.appendChild(geomG);
+    const overlay = el("g", {});
+    geomG.querySelectorAll("text").forEach(tx => {
+      const ax = parseFloat(tx.getAttribute("x")) || 0;
+      const ay = parseFloat(tx.getAttribute("y")) || 0;
+      const [nx,ny] = rot(ax,ay);
+      tx.setAttribute("x", nx); tx.setAttribute("y", ny);
+      const prev = tx.getAttribute("transform");
+      const m = prev && prev.match(/rotate\(\s*(-?\d+(?:\.\d+)?)/);
+      if (m) tx.setAttribute("transform", `rotate(${m[1]} ${nx} ${ny})`);  /* keep vertical labels vertical */
+      overlay.appendChild(tx);
+    });
+    svg.appendChild(overlay);
   }
 }
 
