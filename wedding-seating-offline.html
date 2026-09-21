@@ -722,8 +722,6 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   #selbar b{color:#E8C97D;}
   #selbar button{border:0;border-radius:7px;padding:6px 11px;font:700 12.5px Karla,sans-serif;
     cursor:pointer;}
-  #selMove{background:var(--gold);color:#fff;}
-  #selMove.arm{background:#E8C97D;color:var(--ink);}
   #selClear{background:#4A4C52;color:#fff;}
 
   /* pending-drop banner: names the target OUTSIDE the finger's shadow */
@@ -952,8 +950,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 <div id="dropHint"></div>
 
 <div id="selbar">
-  <span><b id="selCount">0</b> selected</span>
-  <button id="selMove">Move to a table&hellip;</button>
+  <span><b id="selCount">0</b> selected &middot; drag any of them onto a table</span>
   <button id="selClear">Clear</button>
 </div>
 
@@ -1661,31 +1658,22 @@ function paintSelbar(){
   document.body.classList.toggle("selecting", selectMode);
 }
 function clearSelection(){
-  selection.clear(); selectMode = false; selMoveArm = false;
-  $("selBtn").classList.remove("on"); $("selMove").classList.remove("arm");
-  $("selMove").textContent = "Move to a table…";
+  selection.clear(); selectMode = false;
+  $("selBtn").classList.remove("on");
   paintSelbar(); render();
 }
 function toggleSelect(gid){
   if (selection.has(gid)) selection.delete(gid); else selection.add(gid);
-  if (!selection.size) selMoveArm = false;
   paintSelbar(); render();
 }
-let selMoveArm = false;
 $("selBtn").onclick = () => {
   if (!editable) return;
   selectMode = !selectMode;
   $("selBtn").classList.toggle("on", selectMode);
-  if (!selectMode){ selection.clear(); selMoveArm = false; $("selMove").classList.remove("arm"); }
+  if (!selectMode) selection.clear();
   paintSelbar(); render();
 };
 $("selClear").onclick = () => clearSelection();
-$("selMove").onclick = () => {
-  if (!selection.size) return;
-  selMoveArm = !selMoveArm;
-  $("selMove").classList.toggle("arm", selMoveArm);
-  $("selMove").textContent = selMoveArm ? "Now tap a table" : "Move to a table…";
-};
 function opUnseat(gid){
   const g = state.guests.get(gid);
   if (!g || !g.table) return;
@@ -2000,10 +1988,9 @@ function renderPlan(){
     }
     g.addEventListener("click", e => {
       if (Date.now() < suppressClickUntil) return;     /* a pan or drag just ended */
-      /* in select mode a tap on a seat toggles it; the document handler does
-         the toggle - here we just make sure it doesn't also open the zoom */
+      /* in select mode a tap on a seat toggles it (document handler); here we
+         just prevent the tap from also opening the zoom */
       if (selectMode) return;
-      if (selMoveArm && selection.size){ opMoveGroup(selection, t.id); return; }
       /* fine pointers get the seat card on a dot; on touch, dots are ~8px, so
          ANY tap on the table opens its view (review S6) */
       if (!matchMedia("(hover: none)").matches &&
@@ -2552,7 +2539,8 @@ function liftDrag(){
   drag.lastX = drag.startX;
   document.body.classList.add("dragging");
   const g = state.guests.get(drag.gid);
-  $("gname").textContent = g ? g.name : "";
+  const groupN = selection.has(drag.gid) ? selection.size : 0;
+  $("gname").textContent = groupN > 1 ? `${groupN} guests` : (g ? g.name : "");
   const ghost = $("ghost");
   ghost.style.display = "block";
   ghost.style.left = (drag.startX + 14) + "px";
@@ -2568,7 +2556,7 @@ function liftDrag(){
   if (isMobile() && drag.fromDrawer) setDrawer("peek");
 }
 document.addEventListener("pointerdown", e => {
-  if (!editable || drag || selectMode) return;   /* select mode is tap-only, no drag */
+  if (!editable || drag) return;
   if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
   if (e.target.closest("button,input,textarea")) return;
   const src = e.target.closest("[data-guest]");
@@ -2580,8 +2568,10 @@ document.addEventListener("pointerdown", e => {
     fromDrawer: !!e.target.closest("#guestPanel"),
     fromZoom: !!e.target.closest("#zBody")};
   if (e.pointerType !== "mouse"){
-    if (e.target.closest(".seat-hit")) liftDrag();       /* map: immediate */
-    else drag.lpTimer = setTimeout(liftDrag, LP_MS);     /* lists: long-press */
+    /* plan dots lift immediately EXCEPT in select mode, where a tap toggles
+       selection and a long-press starts the (group) drag */
+    if (e.target.closest(".seat-hit") && !selectMode) liftDrag();
+    else drag.lpTimer = setTimeout(liftDrag, LP_MS);
   }
 });
 document.addEventListener("pointermove", e => {
@@ -2670,8 +2660,11 @@ function dropAt(x, y){
 let lastCue = null, lastSeatCue = null;
 /* names the pending drop OUTSIDE the finger's shadow (review checklist 8) */
 function dropHintText(target){
+  const grp = drag && selection.has(drag.gid) && selection.size > 1 ? selection.size : 0;
   if (!target) return (drag && drag.fromZoom)
     ? "Release to unseat" : "Drop on a table…";
+  if (grp) return target.type === "unseat"
+    ? `Unseat ${grp}` : `Drop ${grp} guests → ${tName(target.table)}`;
   if (target.type === "unseat") return "Drop: unseat";
   if (target.type === "table") return `Drop: ${tName(target.table)} · first free seat`;
   const touchDot = target.el && target.el.tagName === "circle" &&
