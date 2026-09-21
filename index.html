@@ -1551,9 +1551,10 @@ function renderPlan(){
       const gid = p.slots[i];
       const guest = gid ? state.guests.get(gid) : null;
       const fc = guest ? famColor(guest.name) : null;
-      g.appendChild(el("circle",{cx,cy,r: fc ? 3.4 : 3.2,
-        fill: fc || (guest ? C.gold : "#FFFFFF"),
-        stroke: guest ? (fc || C.gold) : C.muted, "stroke-width":1,
+      const isSel = guest && selection.has(gid);
+      g.appendChild(el("circle",{cx,cy,r: isSel ? 4.6 : (fc ? 3.4 : 3.2),
+        fill: isSel ? "#1D1F2A" : (fc || (guest ? C.gold : "#FFFFFF")),
+        stroke: isSel ? "#1D1F2A" : (guest ? (fc || C.gold) : C.muted), "stroke-width":1,
         "pointer-events":"none"}));
       const hit = el("circle",{cx,cy,r:10,fill:"transparent",class:"seat-hit"});
       hit.dataset.dropSeat = t.id+":"+i;
@@ -1600,6 +1601,9 @@ function renderPlan(){
     }
     g.addEventListener("click", e => {
       if (Date.now() < suppressClickUntil) return;     /* a pan or drag just ended */
+      /* in select mode a tap on a seat toggles it; the document handler does
+         the toggle - here we just make sure it doesn't also open the zoom */
+      if (selectMode) return;
       if (selMoveArm && selection.size){ opMoveGroup(selection, t.id); return; }
       /* fine pointers get the seat card on a dot; on touch, dots are ~8px, so
          ANY tap on the table opens its view (review S6) */
@@ -2165,7 +2169,7 @@ function liftDrag(){
   if (isMobile() && drag.fromDrawer) setDrawer("peek");
 }
 document.addEventListener("pointerdown", e => {
-  if (!editable || drag) return;
+  if (!editable || drag || selectMode) return;   /* select mode is tap-only, no drag */
   if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
   if (e.target.closest("button,input,textarea")) return;
   const src = e.target.closest("[data-guest]");
