@@ -1542,9 +1542,9 @@ function renderPlan(){
     const g = el("g",{cursor:"pointer"});
     g.dataset.drop = t.id;
     const selected = zoomTable === t.id;   /* survives re-renders: drawn from state */
+    /* one consistent table colour - occupancy is read from the dots (Ross) */
     g.appendChild(el("rect",{x:t.x,y:t.y,width:t.w,height:t.h,rx:6,
-      fill:isFull?C.bronze:(n>0?C.goldSoft:"#FFFFFF"),
-      stroke:selected?C.gold:(isFull?C.bronze:C.line),
+      fill:C.goldSoft, stroke:selected?C.gold:"#D9CBA8",
       "stroke-width":selected?3:1.5,class:"trect"}));
     const pts = seatPoints(t, p.n);
     pts.forEach(([cx,cy], i) => {
@@ -1552,8 +1552,8 @@ function renderPlan(){
       const guest = gid ? state.guests.get(gid) : null;
       const fc = guest ? famColor(guest.name) : null;
       g.appendChild(el("circle",{cx,cy,r: fc ? 3.4 : 3.2,
-        fill: fc || (guest?(isFull?"#FFFFFF":C.gold):"#FFFFFF"),
-        stroke:guest?(isFull?"#FFFFFF":C.gold):C.muted,"stroke-width":1,
+        fill: fc || (guest ? C.gold : "#FFFFFF"),
+        stroke: guest ? (fc || C.gold) : C.muted, "stroke-width":1,
         "pointer-events":"none"}));
       const hit = el("circle",{cx,cy,r:10,fill:"transparent",class:"seat-hit"});
       hit.dataset.dropSeat = t.id+":"+i;
@@ -1565,8 +1565,8 @@ function renderPlan(){
       g.appendChild(hit);
     });
     const name = tName(t.id);
-    const tink = isFull?"#FFFFFF":C.ink;
-    const cink = isFull?"#FFFFFF":(n>0?C.bronze:C.muted);
+    const tink = C.ink;
+    const cink = n>0 ? C.bronze : C.muted;
     const cx = t.x+t.w/2, cy = t.y+t.h/2;
     if (t.o === "v1"){
       /* one label down the LEFT, clear of the single seat column on the right */
@@ -2426,7 +2426,7 @@ function renderZoom(){
       inner += dotSvg(L + i, rx + rw - 16, spread(R, i), {px: rx + rw + 10, anchor: "start"});
     svg = `<svg viewBox="0 0 460 ${H}" preserveAspectRatio="xMidYMid meet">
       <g data-drop="${t.id}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
-        fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
+        fill="${C.goldSoft}" stroke="${C.gold}" stroke-width="3"/>
       <text x="${rx+rw/2}" y="${ry+rh/2}" fill="${isFull ? "#fff" : C.bronze}" font-size="15"
         font-weight="600" font-family="Fraunces,Georgia,serif" text-anchor="middle"
         transform="rotate(-90 ${rx+rw/2} ${ry+rh/2})" letter-spacing="2"
@@ -2444,7 +2444,7 @@ function renderZoom(){
     }
     svg = `<svg viewBox="0 0 340 ${ry + rh + 150}" preserveAspectRatio="xMidYMid meet">
       <g data-drop="${t.id}"><rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="12"
-        fill="${isFull ? C.bronze : C.goldSoft}" stroke="${isFull ? C.bronze : C.gold}" stroke-width="3"/>
+        fill="${C.goldSoft}" stroke="${C.gold}" stroke-width="3"/>
       <text x="${rx+rw/2}" y="${ry+rh/2-6}" fill="${isFull ? "#fff" : C.bronze}" font-size="16"
         font-weight="600" font-family="Fraunces,Georgia,serif" text-anchor="middle"
         letter-spacing="2" pointer-events="none">${esc(tName(t.id).toUpperCase())}</text>
@@ -2868,12 +2868,10 @@ function exportPdf(){
   label("DJ table",351,340,7); label("Dessert",53,540,7);
   for (const t of TABLES){
     const p = placement(t.id), n = p.slots.filter(Boolean).length + p.extras.length;
-    const isFull = n >= p.n;
-    if (isFull) doc.setFillColor(122,95,44); else if (n>0) doc.setFillColor(245,239,224);
-    else doc.setFillColor(255,255,255);
-    doc.setDrawColor(isFull?122:200, isFull?95:199, isFull?44:195);
+    doc.setFillColor(245,239,224);
+    doc.setDrawColor(217,203,168);
     R(t.x,t.y,t.w,t.h,"FD");
-    doc.setTextColor(isFull?255:35, isFull?255:37, isFull?255:43);
+    doc.setTextColor(35,37,43);
     doc.setFont("helvetica","bold"); doc.setFontSize(7);
     if (t.o === "v1"){
       doc.text(tName(t.id).slice(0,12), ox+(t.x+t.w/2)*s, oy+(t.y+t.h/2)*s,
