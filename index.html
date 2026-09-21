@@ -1467,7 +1467,7 @@ function renderPlan(){
       const gid = p.slots[i];
       const guest = gid ? state.guests.get(gid) : null;
       const fc = guest ? famColor(guest.name) : null;
-      g.appendChild(el("circle",{cx,cy,r: fc ? 4.6 : 4.2,
+      g.appendChild(el("circle",{cx,cy,r: fc ? 3.4 : 3.2,
         fill: fc || (guest?(isFull?"#FFFFFF":C.gold):"#FFFFFF"),
         stroke:guest?(isFull?"#FFFFFF":C.gold):C.muted,"stroke-width":1,
         "pointer-events":"none"}));
