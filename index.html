@@ -1504,14 +1504,15 @@ function renderPlan(){
       svg.appendChild(t);
     }
   };
-  const green = (x,y,label) => {
+  const green = (x,y,label,left) => {
     svg.appendChild(el("rect",{x,y,width:15,height:15,fill:"#7FB24A",rx:2}));
-    svg.appendChild(el("text",{x:x+21,y:y+12,fill:C.muted,"font-size":10.5,
-      "font-family":"Karla,sans-serif"},label));
+    svg.appendChild(el("text",{x: left ? x-6 : x+21, y:y+12, fill:C.muted,"font-size":10.5,
+      "text-anchor": left ? "end" : "start", "font-family":"Karla,sans-serif"},label));
   };
-  green(505,22,"Wine Plinth");
+  /* both wine plinths aligned on the right edge, labels to their left */
+  green(562,22,"Wine Plinth",true);
   fix(470,52,110,150,"Lounge pocket",{fill:"#E3E3DD"});
-  green(22,214,"Ceremony flowers"); green(470,214,"Wine Plinth");
+  green(22,214,"Ceremony flowers"); green(562,214,"Wine Plinth",true);
   /* dancefloor with a pillar at each of its four corners */
   const dfx=160, dfy=240, dfw=190, dfh=175;
   svg.appendChild(el("rect",{x:dfx,y:dfy,width:dfw,height:dfh,fill:"none",stroke:C.fixInk,
