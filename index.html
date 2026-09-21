@@ -647,7 +647,7 @@ const TABLES = [
   {id:"T7",  def:"T7",  x:245,y:128,w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
   {id:"T8",  def:"T8",  x:335,y:128,w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
   /* bridal: one-sided, left of the dancefloor */
-  {id:"B1",  def:"Bridal", x:48,y:285,w:26,h:95, defSeats:5, maxSeats:12, o:"v1"},
+  {id:"B1",  def:"Bridal", x:44,y:285,w:46,h:95, defSeats:5, maxSeats:12, o:"v1"},
   /* bottom: two "20" blocks = four tables */
   {id:"T9",  def:"T9",  x:118,y:478,w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
   {id:"T10", def:"T10", x:208,y:478,w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
@@ -1399,7 +1399,7 @@ function seatPoints(t, n){
   } else if (t.o === "v1"){
     /* one-sided vertical (bridal): seats down the right edge */
     for (let i=0;i<n;i++)
-      pts.push([t.x+t.w-6, n === 1 ? t.y+t.h/2 : t.y+12 + i*(t.h-24)/(n-1)]);
+      pts.push([t.x+t.w-8, n === 1 ? t.y+t.h/2 : t.y+12 + i*(t.h-24)/(n-1)]);
   } else {
     for (let i=0;i<n;i++)
       pts.push([n === 1 ? t.x+t.w/2 : t.x+12 + i*(t.w-24)/(n-1), t.y+t.h-9]);
@@ -1445,8 +1445,8 @@ function renderPlan(){
     "font-family":"Karla,sans-serif"},"B"));
   svg.appendChild(el("text",{x:26,y:342,fill:C.ink,"font-size":11,"font-weight":700,
     "font-family":"Karla,sans-serif"},"G"));
-  fix(338,292,26,95,"DJ table",{fill:"#5B6E8C",ink:"#fff",rot:true,fs:9});
   fix(395,240,185,180,"WALL",{fill:"#4A4C52",ink:"#E8E7E1",fs:15});
+  fix(365,292,24,95,"DJ table",{fill:"#5B6E8C",ink:"#fff",rot:true,fs:9});
   green(22,440,"Ceremony flowers");
   fix(40,490,26,100,"Dessert Table",{fill:"#5B6E8C",ink:"#fff",rot:true,fs:9});
   fix(400,452,180,130,"Bar",{fill:"#E3E3DD"});
@@ -1484,7 +1484,15 @@ function renderPlan(){
     const tink = isFull?"#FFFFFF":C.ink;
     const cink = isFull?"#FFFFFF":(n>0?C.bronze:C.muted);
     const cx = t.x+t.w/2, cy = t.y+t.h/2;
-    if (t.o === "v" || t.o === "v1"){
+    if (t.o === "v1"){
+      /* one label down the LEFT, clear of the single seat column on the right */
+      const lx = t.x + 15;
+      const shown = (name.length > 8 ? name.slice(0,7)+"…" : name) + ` · ${n}/${p.n}`;
+      g.appendChild(el("text",{x:lx,y:cy,fill:tink,"font-size":9.5,
+        "text-anchor":"middle","dominant-baseline":"central",
+        "font-family":"Fraunces,Georgia,serif","font-weight":600,
+        transform:`rotate(-90 ${lx} ${cy})`,"pointer-events":"none"},shown));
+    } else if (t.o === "v"){
       const shown = name.length > 10 ? name.slice(0,9)+"…" : name;
       g.appendChild(el("text",{x:cx-4,y:cy,fill:tink,"font-size":9.5,
         "text-anchor":"middle","dominant-baseline":"central",
