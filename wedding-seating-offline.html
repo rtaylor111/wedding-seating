@@ -709,6 +709,23 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   /* long-press drag sources: suppress the platform's own long-press UI */
   .chip,.rrow,.zpill,.seat-hit,.grip{-webkit-touch-callout:none;}
 
+  /* group multi-select */
+  #selBtn.on{border-color:var(--gold);background:var(--gold-soft);}
+  .chip.sel, .rrow.sel{outline:2px solid var(--gold);outline-offset:-1px;
+    background:var(--gold-soft);}
+  .zseat.sel .zpill{outline:2px solid var(--gold);}
+  #selbar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:32;
+    display:none;align-items:center;gap:10px;background:var(--ink);color:#fff;
+    border-radius:10px;padding:8px 14px;font:700 13px Karla,sans-serif;
+    box-shadow:0 8px 22px rgba(35,37,43,.3);max-width:92vw;}
+  body.selecting #selbar{display:flex;}
+  #selbar b{color:#E8C97D;}
+  #selbar button{border:0;border-radius:7px;padding:6px 11px;font:700 12.5px Karla,sans-serif;
+    cursor:pointer;}
+  #selMove{background:var(--gold);color:#fff;}
+  #selMove.arm{background:#E8C97D;color:var(--ink);}
+  #selClear{background:#4A4C52;color:#fff;}
+
   /* pending-drop banner: names the target OUTSIDE the finger's shadow */
   #dropHint{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;
     display:none;background:var(--ink);color:#fff;border-radius:9px;padding:6px 14px;
@@ -794,6 +811,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     <button class="hbtn editonly" id="iconsBtn" title="Icons &amp; runner"></button>
     <button class="hbtn" id="famBtn" style="font-size:13px"
       title="Colour-code guests by surname">Families</button>
+    <button class="hbtn editonly" id="selBtn" style="font-size:13px"
+      title="Select several guests to move together">Select</button>
     <button class="hbtn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
     <button class="hbtn" id="redoBtn" title="Redo (Ctrl+Y)" disabled>&#8631;</button>
     <button class="hbtn" id="verBtn" style="font-size:13px;display:none">Versions</button>
@@ -931,6 +950,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 </div>
 
 <div id="dropHint"></div>
+
+<div id="selbar">
+  <span><b id="selCount">0</b> selected</span>
+  <button id="selMove">Move to a table&hellip;</button>
+  <button id="selClear">Clear</button>
+</div>
 
 <div class="modal" id="menuSheet">
   <div class="panel">
@@ -1603,6 +1628,64 @@ function opSeatFirstFree(gid, tableId){
   if (free < 0){ toast(`${tName(tableId)} is full (${p.n} seats).`); return; }
   commit([guestPatch(gid, {name:g.name, table:tableId, seat:free, seatedAt:Date.now()})]);
 }
+/* move a whole selected group to a table, filling its free seats in one
+   undoable batch; anyone who doesn't fit is reported, not force-seated */
+function opMoveGroup(ids, tableId){
+  const t = TABLE_BY_ID[tableId];
+  if (!t) return;
+  const ids2 = [...ids].filter(id => state.guests.get(id) && state.guests.get(id).table !== tableId);
+  if (!ids2.length){ toast("Those guests are already at that table."); return; }
+  const taken = placement(tableId).slots.map(x => x !== null);
+  const patches = [], overflow = [];
+  let base = Date.now();
+  for (const id of ids2){
+    const free = taken.indexOf(false);
+    if (free < 0){ overflow.push(id); continue; }
+    taken[free] = true;
+    const g = state.guests.get(id);
+    patches.push(guestPatch(id, {name:g.name, table:tableId, seat:free, seatedAt:base++}));
+  }
+  if (!patches.length){ toast(`${tName(tableId)} has no free seats.`); return; }
+  if (commit(patches)){
+    toast(`Moved ${patches.length} to ${tName(tableId)}.` +
+      (overflow.length ? ` ${overflow.length} didn't fit - table full.` : ""));
+    clearSelection();
+  }
+}
+
+/* ============ group multi-select ============ */
+let selectMode = false;
+const selection = new Set();
+function paintSelbar(){
+  $("selCount").textContent = selection.size;
+  document.body.classList.toggle("selecting", selectMode);
+}
+function clearSelection(){
+  selection.clear(); selectMode = false; selMoveArm = false;
+  $("selBtn").classList.remove("on"); $("selMove").classList.remove("arm");
+  $("selMove").textContent = "Move to a table…";
+  paintSelbar(); render();
+}
+function toggleSelect(gid){
+  if (selection.has(gid)) selection.delete(gid); else selection.add(gid);
+  if (!selection.size) selMoveArm = false;
+  paintSelbar(); render();
+}
+let selMoveArm = false;
+$("selBtn").onclick = () => {
+  if (!editable) return;
+  selectMode = !selectMode;
+  $("selBtn").classList.toggle("on", selectMode);
+  if (!selectMode){ selection.clear(); selMoveArm = false; $("selMove").classList.remove("arm"); }
+  paintSelbar(); render();
+};
+$("selClear").onclick = () => clearSelection();
+$("selMove").onclick = () => {
+  if (!selection.size) return;
+  selMoveArm = !selMoveArm;
+  $("selMove").classList.toggle("arm", selMoveArm);
+  $("selMove").textContent = selMoveArm ? "Now tap a table" : "Move to a table…";
+};
 function opUnseat(gid){
   const g = state.guests.get(gid);
   if (!g || !g.table) return;
@@ -1915,6 +1998,7 @@ function renderPlan(){
     }
     g.addEventListener("click", e => {
       if (Date.now() < suppressClickUntil) return;     /* a pan or drag just ended */
+      if (selMoveArm && selection.size){ opMoveGroup(selection, t.id); return; }
       /* fine pointers get the seat card on a dot; on touch, dots are ~8px, so
          ANY tap on the table opens its view (review S6) */
       if (!matchMedia("(hover: none)").matches &&
@@ -2124,7 +2208,7 @@ function renderChips(){
         const c = famColor(g.name);
         /* × here UNSEATS only - deleting lives in the Delete guests section
            (Ross: accidental deletes are bad) */
-        return `<div class="chip" data-guest="${id}"` +
+        return `<div class="chip${selection.has(id)?" sel":""}" data-guest="${id}"` +
           `${c ? ` style="border-left:4px solid ${c}"` : ""}>` +
           `<span class="grip">&#8942;&#8942;</span>` +
           `<span class="nm">${esc(g.name)}</span>` +
@@ -2150,14 +2234,14 @@ function renderRoster(){
     p.slots.forEach((gid, i) => {
       if (!gid) return;
       const g = state.guests.get(gid);
-      rows.push(`<li class="rrow" data-guest="${gid}" data-drop-seat="${t.id}:${i}">` +
+      rows.push(`<li class="rrow${selection.has(gid)?" sel":""}" data-guest="${gid}" data-drop-seat="${t.id}:${i}">` +
         `<span class="grip">&#8942;&#8942;</span><span class="seatno">${i+1}</span>` +
         `${fam(g.name)}<span class="nm">${esc(g.name)}</span>` +
         `<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></li>`);
     });
     for (const gid of p.extras){
       const g = state.guests.get(gid);
-      rows.push(`<li class="rrow" data-guest="${gid}">` +
+      rows.push(`<li class="rrow${selection.has(gid)?" sel":""}" data-guest="${gid}">` +
         `<span class="grip">&#8942;&#8942;</span><span class="seatno" style="color:var(--danger)">!</span>` +
         `${fam(g.name)}<span class="nm">${esc(g.name)}</span>` +
         `<button class="del" data-unseat="${gid}" title="Unseat">&times;</button></li>`);
@@ -2171,7 +2255,7 @@ function renderRoster(){
   }).join("") + (unseated().length
     ? `<div class="card" data-drop="unseat"><h3>Unseated<span class="n">${unseated().length}</span></h3>` +
       `<ul>${unseated().map(([id,g]) =>
-        `<li class="rrow" data-guest="${id}"><span class="grip">&#8942;&#8942;</span>` +
+        `<li class="rrow${selection.has(id)?" sel":""}" data-guest="${id}"><span class="grip">&#8942;&#8942;</span>` +
         `${fam(g.name)}<span class="nm">${esc(g.name)}</span></li>`).join("")}</ul></div>`
     : "");
 }
@@ -2185,6 +2269,12 @@ document.addEventListener("click", e => {
         "[data-rename],[data-pick],#guestPanel [data-guest]"))
       requireEdit();
     return;
+  }
+  /* in select mode, a tap on a guest toggles it into the group (and the
+     buttons still work) */
+  if (selectMode && !e.target.closest("button,input,textarea")){
+    const gsrc = e.target.closest("[data-guest]");
+    if (gsrc){ toggleSelect(gsrc.dataset ? gsrc.dataset.guest : gsrc.getAttribute("data-guest")); return; }
   }
   const del = e.target.closest("[data-del]");
   if (del){ opDelete(del.dataset.del); return; }
@@ -2530,6 +2620,10 @@ document.addEventListener("pointerup", e => {
      TABLE drop (first free seat); seat precision lives in the table view */
   if (target.type === "seat" && target.el && target.el.tagName === "circle" &&
       ptype !== "mouse") target = {type:"table", table:target.table};
+  /* dragging one of a selected group moves the whole group to that table */
+  if (selection.has(gid) && selection.size > 1 && target.type !== "unseat"){
+    opMoveGroup(selection, target.table); return;
+  }
   if (target.type === "unseat") opUnseat(gid);
   else if (target.type === "seat") opSeatAt(gid, target.table, target.seat);
   else opSeatFirstFree(gid, target.table);
