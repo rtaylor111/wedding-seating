@@ -28,6 +28,24 @@
   header h1{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:21px;margin:0;}
   .counts{color:var(--muted);font-size:13.5px;}
   .counts b{color:var(--ink);font-variant-numeric:tabular-nums;}
+  .planbar{display:flex;align-items:center;gap:2px;}
+  .parrow{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:7px;
+    width:26px;height:28px;font-size:16px;line-height:1;cursor:pointer;padding:0;}
+  .parrow:disabled{opacity:.3;cursor:default;}
+  .parrow:not(:disabled):hover{border-color:var(--gold);background:var(--gold-soft);}
+  .pname{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
+    padding:5px 12px;font:600 13.5px Fraunces,Georgia,serif;cursor:pointer;max-width:220px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pname::after{content:" \25BE";color:var(--muted);font-size:11px;}
+  .pname:hover{border-color:var(--gold);background:var(--gold-soft);}
+  .planopt{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:5px 0;cursor:pointer;}
+  .planopt input{margin:0;}
+  .planlab{display:block;margin:8px 0 4px;font-size:13px;color:var(--muted);}
+  .planrow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;
+    border-radius:8px;padding:9px 11px;cursor:pointer;font:500 13.5px Karla,sans-serif;text-align:left;width:100%;}
+  .planrow.cur{border-color:var(--gold);background:var(--gold-soft);}
+  .planrow .badge{margin-left:auto;font-size:11px;color:var(--muted);}
+  .planrow .tick{color:var(--gold);font-weight:700;}
   .hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .savestate{font-size:12.5px;color:var(--muted);}
   .savestate.bad{color:var(--danger);font-weight:700;}
@@ -408,6 +426,11 @@
 
 <header>
   <h1>Wedding Seating Planner</h1>
+  <div class="planbar" id="planbar">
+    <button class="parrow" id="planPrev" title="Previous plan" aria-label="Previous plan">&#8249;</button>
+    <button class="pname" id="planName" title="Switch or manage seating plans"></button>
+    <button class="parrow" id="planNext" title="Next plan" aria-label="Next plan">&#8250;</button>
+  </div>
   <span class="counts" id="counts"></span>
   <div class="hdr-right">
     <button class="hbtn editonly" id="iconsBtn" title="Icons &amp; runner"></button>
@@ -582,6 +605,33 @@
   </div>
 </div>
 
+<div class="modal" id="planSheet">
+  <div class="panel">
+    <div class="mrow"><h2 style="flex:1">Seating plans</h2>
+      <button class="hbtn mclose" id="planClose">&times;</button></div>
+    <p class="hint" style="font-size:12.5px;margin:0 0 8px">Each plan has its own guests and
+      table layout. Switching here only changes what YOU see - it never moves anyone else's view.</p>
+    <div class="verlist" id="planList"></div>
+    <div class="editonly" id="planAdmin">
+      <div class="mrow" style="gap:8px">
+        <button class="hbtn" id="planRenameBtn" style="font-size:13px">Rename current</button>
+        <button class="hbtn" id="planDeleteBtn" style="font-size:13px">Delete current</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:12px 0 10px">
+      <h2 style="font-size:15px;margin:0 0 8px">New plan</h2>
+      <input type="text" id="newPlanName" placeholder="Plan name (e.g. Bridal party layout)"
+        maxlength="40" style="width:100%;box-sizing:border-box;margin-bottom:9px">
+      <label class="planopt"><input type="radio" name="newPlanLayout" value="standard" checked>
+        <span>Standard layout (single bridal table)</span></label>
+      <label class="planopt"><input type="radio" name="newPlanLayout" value="bridalDouble">
+        <span>Bridal variant (two joined bridal tables)</span></label>
+      <label class="planlab" for="newPlanCopy">Copy guests from</label>
+      <select id="newPlanCopy" style="width:100%;box-sizing:border-box;margin-bottom:11px"></select>
+      <button class="addbtn" id="newPlanGo">Create plan</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="pickModal">
   <div class="panel">
     <h2 id="pickTitle">Seat a guest</h2>
@@ -662,7 +712,7 @@ if (SANDBOX){
    Guest tables are horizontal double-sided (o:"hh": 5 seats along the top,
    5 along the bottom), drawn in joined pairs where the venue plan shows a
    "20". Bridal is one-sided vertical (o:"v1"). viewBox is 0 0 600 720. */
-const TABLES = [
+const STANDARD_TABLES = [
   /* top: four "20" blocks = eight tables */
   {id:"T1",  def:"T1",  x:45, y:58, w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
   {id:"T2",  def:"T2",  x:135,y:58, w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
@@ -680,8 +730,25 @@ const TABLES = [
   {id:"T11", def:"T11", x:118,y:548,w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
   {id:"T12", def:"T12", x:208,y:548,w:88,h:34, defSeats:10, maxSeats:14, o:"hh"},
 ];
-const TABLE_BY_ID = Object.fromEntries(TABLES.map(t=>[t.id,t]));
-const GUEST_TABLES = TABLES.filter(t => t.o === "hh");
+/* the BRIDAL VARIANT: the single vertical bridal (B1) becomes two shorter
+   vertical tables glued one above the other, both named "Bridal", in the same
+   spot to the left of the dancefloor (Ross). Everything else is identical. */
+const BRIDAL_DOUBLE_TABLES = STANDARD_TABLES.flatMap(t => t.id === "B1"
+  ? [{id:"B1", def:"Bridal", x:44,y:252,w:52,h:88, defSeats:10, maxSeats:14, o:"v"},
+     {id:"B2", def:"Bridal", x:44,y:340,w:52,h:88, defSeats:10, maxSeats:14, o:"v"}]
+  : [t]);
+const LAYOUTS = {standard: STANDARD_TABLES, bridalDouble: BRIDAL_DOUBLE_TABLES};
+/* the ACTIVE plan's layout drives every read of the tables. Kept as `let` and
+   reassigned on a plan switch, so all the call sites below just see whichever
+   layout is current (multi-plan). */
+let TABLES = STANDARD_TABLES;
+let TABLE_BY_ID = Object.fromEntries(TABLES.map(t=>[t.id,t]));
+let GUEST_TABLES = TABLES.filter(t => t.o === "hh");
+function applyLayout(key){
+  TABLES = LAYOUTS[key] || LAYOUTS.standard;
+  TABLE_BY_ID = Object.fromEntries(TABLES.map(t=>[t.id,t]));
+  GUEST_TABLES = TABLES.filter(t => t.o === "hh");
+}
 
 /* ============ state ============ */
 const state = {
@@ -702,12 +769,74 @@ let planRot = 0;
 try{ planRot = ([0,90,180,270].includes(+localStorage.getItem("wsPlanRot")))
   ? +localStorage.getItem("wsPlanRot") : 0; }catch(_){}
 
+/* ============ multi-plan ============
+   Several named seating plans coexist in the SAME shared store, told apart by a
+   plan tag baked into each guest/table key. The ORIGINAL plan is "main" and its
+   keys stay UNTAGGED (existing data is never rewritten); every other plan's keys
+   are `<planId>~<localId>`. The LIST of plans lives in settings.plans (shared,
+   so both devices see the same set); which plan you are VIEWING is a local,
+   per-device choice (like the zoom/rotation), so switching on one device never
+   moves another. No server/Code.gs change: the backend just stores more keys. */
+const PLAN_SEP = "~";
+const MAIN_PLAN = "main";
+const PLAN_ID_RE = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
+const DEFAULT_MAIN = {name:"Seating plan", layout:"standard"};
+let activePlan = MAIN_PLAN;
+try{ activePlan = localStorage.getItem("wsActivePlan") || MAIN_PLAN; }catch(_){}
+const planTag = key => { const i = String(key).indexOf(PLAN_SEP); return i < 0 ? MAIN_PLAN : String(key).slice(0,i); };
+const planKey = (planId, localId) => planId === MAIN_PLAN ? localId : planId + PLAN_SEP + localId;
+const cfgKey = tableId => planKey(activePlan, tableId);
+const inPlan = key => planTag(key) === activePlan;
+const planGuestEntries = () => [...state.guests.entries()].filter(([k]) => inPlan(k));
+/* effective plan list: always includes "main" even if settings.plans is absent
+   or was written without it (main is the anchor for the untagged data) */
+function planMeta(){
+  const raw = state.settings.plans;
+  const byId = {}; byId[MAIN_PLAN] = {...DEFAULT_MAIN};
+  let order = [MAIN_PLAN];
+  if (raw && typeof raw === "object"){
+    if (raw.byId && typeof raw.byId === "object")
+      for (const [id,v] of Object.entries(raw.byId)){
+        if (!PLAN_ID_RE.test(id) || !v || typeof v !== "object") continue;
+        byId[id] = {name: String(v.name || id).slice(0,40),
+          layout: LAYOUTS[v.layout] ? v.layout : "standard"};
+      }
+    if (Array.isArray(raw.order)) order = raw.order.filter(id => byId[id]);
+  }
+  if (!order.includes(MAIN_PLAN)) order.unshift(MAIN_PLAN);
+  for (const id of Object.keys(byId)) if (!order.includes(id)) order.push(id);
+  return {order, byId};
+}
+function planInfo(id){ return planMeta().byId[id] || DEFAULT_MAIN; }
+function currentLayoutKey(){ return planInfo(activePlan).layout; }
+function ensureActivePlan(){
+  const m = planMeta();
+  if (!m.byId[activePlan]){
+    activePlan = m.order[0] || MAIN_PLAN;
+    try{ localStorage.setItem("wsActivePlan", activePlan); }catch(_){}
+  }
+}
+/* re-point the layout at whatever plan is now active (called from adopt + boot) */
+function applyActivePlanLayout(){ ensureActivePlan(); applyLayout(currentLayoutKey()); }
+function setActivePlan(id){
+  const m = planMeta();
+  if (!m.byId[id]) return;
+  activePlan = id;
+  try{ localStorage.setItem("wsActivePlan", id); }catch(_){}
+  applyLayout(currentLayoutKey());
+  if (zoomTable && !TABLE_BY_ID[zoomTable]) closeZoom();
+  selection.clear(); selectMode = false;
+  $("selBtn").classList.remove("on"); paintSelbar();
+  render();
+  fitView();
+}
+
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const tName = id => (state.tableCfg.get(id)||{}).name || (TABLE_BY_ID[id] ? TABLE_BY_ID[id].def : id);
+const tName = id => (state.tableCfg.get(cfgKey(id))||{}).name || (TABLE_BY_ID[id] ? TABLE_BY_ID[id].def : id);
 function tSeats(id){
-  const t = TABLE_BY_ID[id], cfg = state.tableCfg.get(id);
+  const t = TABLE_BY_ID[id], cfg = state.tableCfg.get(cfgKey(id));
   const n = cfg && Number.isFinite(cfg.seats) ? Math.round(cfg.seats) : t.defSeats;
   return Math.max(1, Math.min(t.maxSeats, n));
 }
@@ -719,10 +848,10 @@ const totalSeats = () => TABLES.reduce((s,t) => s+tSeats(t.id), 0);
    they became a frozen phantom: invisible, un-seatable and un-deletable. */
 const isSeated = g => !!(g && g.table && TABLE_BY_ID[g.table]);
 const guestsOf = id => [...state.guests.entries()]
-  .filter(([,g]) => g.table === id)
+  .filter(([gid,g]) => g.table === id && inPlan(gid))
   .sort((a,b) => (a[1].seatedAt||0)-(b[1].seatedAt||0) || (a[0]<b[0]?-1:1));
 const unseated = () => [...state.guests.entries()]
-  .filter(([,g]) => !isSeated(g))
+  .filter(([gid,g]) => !isSeated(g) && inPlan(gid))
   .sort((a,b) => a[1].name.localeCompare(b[1].name));
 
 function normName(s){ return String(s).trim().replace(/\s+/g," "); }
@@ -840,6 +969,7 @@ function adopt(version, s){
   for (const sent of pendingSent)
     for (const p of sent) applyPatchLocal(p, "after");
   syncSettingsUi();
+  applyActivePlanLayout();   /* the plan list / active plan may have changed */
   persistLocal();
   render();
 }
@@ -1177,6 +1307,7 @@ document.addEventListener("keydown", e => {
     $("importSheet").style.display = "none";
     $("deleteSheet").style.display = "none";
     $("iconsFly").style.display = "none";
+    $("planSheet").style.display = "none";
     delete document.body.dataset.roster; return; }
   if (!editable) return;
   if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
@@ -1192,19 +1323,123 @@ const guestPatch = (gid, after) => {
 };
 const tablePatch = (tableId, nextCfg) => {
   const t = TABLE_BY_ID[tableId];
-  const cur = state.tableCfg.get(tableId);
+  const key = cfgKey(tableId);
+  const cur = state.tableCfg.get(key);
   const next = {...(cur||{}), ...nextCfg};
   if (!next.name) delete next.name;
   if (!Number.isFinite(next.seats) || next.seats === t.defSeats) delete next.seats;
-  return {kind:"table", id:tableId, before: cur ? {...cur} : null,
+  return {kind:"table", id:key, before: cur ? {...cur} : null,
     after: Object.keys(next).length ? next : null};
 };
 const settingsBody = () => ({seatIcon, colorBySurname: colorFams});
 
 /* ============ operations ============ */
 function opAddGuests(names){
-  return commit(names.map(name =>
-    ({kind:"guest", id:newId(), before:null, after:{name, table:null, seat:null, seatedAt:null}})));
+  return commit(names.map(name =>   /* new guests belong to the active plan */
+    ({kind:"guest", id:planKey(activePlan, newId()), before:null, after:{name, table:null, seat:null, seatedAt:null}})));
+}
+
+/* ---- plan create / rename / delete / copy ---- */
+/* the whole plan list is ONE settings entry; main's defaults are not stored (it
+   is re-derived), so the blob stays small and main can never be lost */
+function plansSettingsPatch(meta){
+  const store = {order: meta.order.slice(), byId: {}};
+  for (const [id,v] of Object.entries(meta.byId)){
+    if (id === MAIN_PLAN && v.name === DEFAULT_MAIN.name && v.layout === DEFAULT_MAIN.layout) continue;
+    store.byId[id] = {name: v.name, layout: v.layout};
+  }
+  return {kind:"settings", id:"plans",
+    before: state.settings.plans ? JSON.parse(JSON.stringify(state.settings.plans)) : null,
+    after: store};
+}
+/* copy a source plan's guests onto the target plan's layout, matched by TABLE
+   NAME (same seat where free; overflow and no-match go to the target's unseated
+   list). Also copies each matched table's seat count. Returns {patches, copied,
+   unmatched} for the caller's toast. */
+function buildPlanCopy(sourceId, targetId, targetLayoutKey){
+  const m = planMeta();
+  const srcLayout = LAYOUTS[(m.byId[sourceId]||DEFAULT_MAIN).layout] || LAYOUTS.standard;
+  const tgtLayout = LAYOUTS[targetLayoutKey] || LAYOUTS.standard;
+  const srcById = Object.fromEntries(srcLayout.map(t=>[t.id,t]));
+  const sName = tid => { const c = state.tableCfg.get(planKey(sourceId,tid));
+    return (c && c.name) || (srcById[tid] ? srcById[tid].def : tid); };
+  const sSeats = tid => { const t = srcById[tid]; if (!t) return 0;
+    const c = state.tableCfg.get(planKey(sourceId,tid));
+    const n = c && Number.isFinite(c.seats) ? Math.round(c.seats) : t.defSeats;
+    return Math.max(1, Math.min(t.maxSeats, n)); };
+  const patches = [];
+  const byName = new Map();   /* target table name -> [{t, slots:[bool]}] */
+  for (const t of tgtLayout){
+    let seats = t.defSeats;
+    const match = srcLayout.find(st => sName(st.id) === t.def);
+    if (match) seats = Math.max(1, Math.min(t.maxSeats, sSeats(match.id)));
+    if (seats !== t.defSeats)
+      patches.push({kind:"table", id: planKey(targetId, t.id), before:null, after:{seats}});
+    const rec = {t, slots: new Array(seats).fill(false)};
+    if (!byName.has(t.def)) byName.set(t.def, []);
+    byName.get(t.def).push(rec);
+  }
+  let seatedAt = Date.now(), unmatched = 0;
+  const place = (g, table, seat) =>
+    patches.push({kind:"guest", id: planKey(targetId, newId()), before:null,
+      after:{name:g.name, table, seat, seatedAt: table ? seatedAt++ : null}});
+  const src = [...state.guests.entries()].filter(([k]) => planTag(k) === sourceId);
+  const seated = [], loose = [];
+  for (const [,g] of src) (g.table && srcById[g.table] ? seated : loose).push(g);
+  seated.sort((a,b) => (a.table<b.table?-1:a.table>b.table?1:0) || ((a.seat??0)-(b.seat??0)));
+  for (const g of seated){
+    const recs = byName.get(sName(g.table));
+    if (!recs){ place(g, null, null); unmatched++; continue; }
+    let done = false;
+    const pref = Number.isInteger(g.seat) ? g.seat : -1;
+    if (pref >= 0) for (const r of recs)
+      if (pref < r.slots.length && !r.slots[pref]){ r.slots[pref]=true; place(g, r.t.id, pref); done=true; break; }
+    if (!done) for (const r of recs){
+      const fi = r.slots.indexOf(false);
+      if (fi >= 0){ r.slots[fi]=true; place(g, r.t.id, fi); done=true; break; } }
+    if (!done){ place(g, null, null); unmatched++; }   /* all same-name tables full */
+  }
+  for (const g of loose) place(g, null, null);
+  return {patches, copied: src.length, unmatched};
+}
+function opNewPlan(name, layoutKey, copyFromId){
+  if (!requireEdit()) return false;
+  const m = planMeta();
+  const id = "p" + newId();
+  const layout = LAYOUTS[layoutKey] ? layoutKey : "standard";
+  const nm = String(name||"").trim().slice(0,40) || "New plan";
+  const meta = {order:[...m.order, id], byId:{...m.byId, [id]:{name:nm, layout}}};
+  const patches = [plansSettingsPatch(meta)];
+  let rep = null;
+  if (copyFromId && m.byId[copyFromId]){ rep = buildPlanCopy(copyFromId, id, layout); patches.push(...rep.patches); }
+  if (!commit(patches)) return false;
+  setActivePlan(id);
+  if (rep) toast(`Created "${nm}" - copied ${rep.copied} guest${rep.copied===1?"":"s"} from "${planInfo(copyFromId).name}"` +
+    (rep.unmatched ? `; ${rep.unmatched} had no matching table and are unseated.` : "."));
+  else toast(`Created "${nm}".`);
+  return true;
+}
+function opRenamePlan(id, name){
+  if (!requireEdit()) return false;
+  const m = planMeta();
+  const nm = String(name||"").trim().slice(0,40);
+  if (!m.byId[id] || !nm) return false;
+  const meta = {order:m.order.slice(), byId:{...m.byId, [id]:{...m.byId[id], name:nm}}};
+  return commit([plansSettingsPatch(meta)]);
+}
+function opDeletePlan(id){
+  if (!requireEdit()) return false;
+  const m = planMeta();
+  if (id === MAIN_PLAN || !m.byId[id] || m.order.length <= 1) return false;
+  const patches = [];
+  for (const [k,g] of state.guests) if (planTag(k) === id) patches.push(guestPatch(k, null));
+  for (const [k,c] of state.tableCfg) if (planTag(k) === id) patches.push({kind:"table", id:k, before:{...c}, after:null});
+  const byId = {...m.byId}; delete byId[id];
+  patches.push(plansSettingsPatch({order: m.order.filter(x=>x!==id), byId}));
+  if (!commit(patches)) return false;
+  setActivePlan(m.order.filter(x=>x!==id)[0] || MAIN_PLAN);
+  toast("Plan deleted. Undo with ↶.");
+  return true;
 }
 function opSeatAt(gid, tableId, seatIdx){
   const g = state.guests.get(gid);
@@ -1369,7 +1604,7 @@ function opToggleFams(){
     after:{...settingsBody(), colorBySurname: turningOn}}]);
   if (!done) return;
   if (turningOn){
-    const set = new Set([...state.guests.values()].map(g => surnameOf(g.name)).filter(Boolean));
+    const set = new Set(planGuestEntries().map(([,g]) => surnameOf(g.name)).filter(Boolean));
     toast(set.size ? `Coloured ${set.size} surname${set.size>1?"s":""}.` : "No guests to colour yet.");
   } else toast("Family colours off.");
 }
@@ -1380,7 +1615,7 @@ function addNames(raw){
   let names = raw.map(normName).filter(Boolean);
   if (names.length && HEADER_RE.test(names[0])) names = names.slice(1);
   if (!names.length){ toast("No names found."); return; }
-  const existing = new Set([...state.guests.values()].map(g=>g.name.toLowerCase()));
+  const existing = new Set(planGuestEntries().map(([,g])=>g.name.toLowerCase()));
   const fresh = [], dupes = [];
   for (const n of names){
     if (existing.has(n.toLowerCase())) dupes.push(n);
@@ -1450,19 +1685,82 @@ function rosterEditActive(){
   return inp && document.activeElement === inp;
 }
 function render(){
+  renderPlanBar();
   renderPlan(); renderChips();
   if (!rosterEditActive()) renderRoster();
   if (zoomTable && !zoomEditActive()) renderZoom();
   renderCounts(); updateUndoUi();
 }
 function renderCounts(){
-  const total = state.guests.size, un = unseated().length;
+  const total = planGuestEntries().length, un = unseated().length;
   $("counts").innerHTML =
     `<b>${total-un}</b> seated &middot; <b>${un}</b> unseated &middot; ` +
     `<b>${total}</b> guests &middot; <b>${totalSeats()}</b> seats`;
   const vals = new Set(GUEST_TABLES.map(t => tSeats(t.id)));
   $("allSeatsVal").textContent = vals.size === 1 ? [...vals][0] : "mixed";
 }
+
+/* ---- plan switcher UI ---- */
+const planCountOf = id => { let n = 0; for (const k of state.guests.keys()) if (planTag(k) === id) n++; return n; };
+const planLayoutLabel = k => k === "bridalDouble" ? "Bridal variant" : "Standard";
+function renderPlanBar(){
+  const m = planMeta();
+  $("planName").textContent = (m.byId[activePlan] || DEFAULT_MAIN).name;
+  const solo = m.order.length <= 1;
+  $("planPrev").disabled = solo;
+  $("planNext").disabled = solo;
+}
+function stepPlan(dir){
+  const m = planMeta();
+  const i = m.order.indexOf(activePlan);
+  if (i >= 0) setActivePlan(m.order[(i + dir + m.order.length) % m.order.length]);
+}
+function renderPlanSheet(){
+  const m = planMeta();
+  $("planList").innerHTML = m.order.map(id => {
+    const info = m.byId[id], cur = id === activePlan;
+    return `<button class="planrow${cur?" cur":""}" data-plan="${id}">` +
+      `${cur?`<span class="tick">&#10003;</span>`:""}<span>${esc(info.name)}</span>` +
+      `<span class="badge">${planLayoutLabel(info.layout)} &middot; ${planCountOf(id)} guests</span></button>`;
+  }).join("");
+  const sel = $("newPlanCopy");
+  sel.innerHTML = `<option value="">Start empty</option>` +
+    m.order.map(id => `<option value="${id}">${esc(m.byId[id].name)}</option>`).join("");
+  sel.value = activePlan;
+  $("planDeleteBtn").disabled = (activePlan === MAIN_PLAN) || (m.order.length <= 1);
+}
+$("planPrev").onclick = () => stepPlan(-1);
+$("planNext").onclick = () => stepPlan(1);
+$("planName").onclick = () => { renderPlanSheet(); $("planSheet").style.display = "flex"; };
+$("planClose").onclick = () => { $("planSheet").style.display = "none"; };
+$("planSheet").addEventListener("click", e => {
+  if (e.target === $("planSheet")) $("planSheet").style.display = "none"; });
+$("planList").addEventListener("click", e => {
+  const b = e.target.closest("[data-plan]");
+  if (!b) return;
+  $("planSheet").style.display = "none";
+  setActivePlan(b.dataset.plan);
+});
+$("newPlanGo").onclick = () => {
+  if (!editable){ requireEdit(); return; }
+  const layout = (document.querySelector('input[name="newPlanLayout"]:checked')||{}).value || "standard";
+  if (opNewPlan($("newPlanName").value, layout, $("newPlanCopy").value || null)){
+    $("newPlanName").value = "";
+    $("planSheet").style.display = "none";
+  }
+};
+$("planRenameBtn").onclick = () => {
+  if (!editable){ requireEdit(); return; }
+  const nm = prompt("Rename this plan:", planInfo(activePlan).name);
+  if (nm != null && nm.trim() && opRenamePlan(activePlan, nm)) renderPlanSheet();
+};
+$("planDeleteBtn").onclick = () => {
+  if (!editable){ requireEdit(); return; }
+  if (activePlan === MAIN_PLAN){ toast("The first plan can't be deleted."); return; }
+  const info = planInfo(activePlan), n = planCountOf(activePlan);
+  $("planSheet").style.display = "none";
+  toast(`Delete "${info.name}" and its ${n} guest${n===1?"":"s"}?`, "Delete", () => opDeletePlan(activePlan));
+};
 
 function seatPoints(t, n){
   const pts = [];
@@ -1785,7 +2083,8 @@ function renderChips(){
     p.slots.forEach((gid,i) => { if (gid) loc.set(gid, `${tName(t.id)} · ${i+1}`); });
     for (const gid of p.extras) loc.set(gid, `${tName(t.id)} · !`);
   }
-  let list = [...state.guests.entries()];
+  let list = planGuestEntries();
+  const total = list.length;   /* guests in THIS plan (before the view filters) */
   if (guestView === "unseated") list = list.filter(([,g]) => !isSeated(g));
   if (guestView === "seated") list = list.filter(([,g]) => isSeated(g));
   list.sort((a,b) => (isSeated(a[1]) - isSeated(b[1])) || a[1].name.localeCompare(b[1].name));
@@ -1793,13 +2092,13 @@ function renderChips(){
   /* counts live HERE, never in the tabs - tab widths stay constant so the
      row can never crowd (Ross) */
   const unN = unseated().length;
-  $("listHdr").textContent = state.guests.size
-    ? `Guest list · ${unN} unseated of ${state.guests.size}`
+  $("listHdr").textContent = total
+    ? `Guest list · ${unN} unseated of ${total}`
     : "Guest list";
   /* the PEEK bar mirrors the ACTIVE filter, never a stale label (review S7) */
   $("peekLabel").textContent =
-    guestView === "seated" ? `Seated (${state.guests.size - unN})` :
-    guestView === "all" ? `Guests (${state.guests.size})` : `Unseated (${unN})`;
+    guestView === "seated" ? `Seated (${total - unN})` :
+    guestView === "all" ? `Guests (${total})` : `Unseated (${unN})`;
   $("peekPills").innerHTML = list.slice(0, 10).map(([id,g]) => {
     const c = famColor(g.name);
     return `<div class="chip" data-guest="${id}"` +
@@ -1819,7 +2118,7 @@ function renderChips(){
           (isSeated(g) ? `<button class="del" data-unseat="${id}" title="Unseat">&times;</button>` : "") +
           `</div>`;
       }).join("")
-    : `<p class="emptymsg">${state.guests.size
+    : `<p class="emptymsg">${total
         ? (q ? "No match." : "Everyone is seated. Bravo.")
         : (editable ? "No guests yet - add some above." : "No guests on the list yet.")}</p>`;
 }
@@ -1938,7 +2237,7 @@ function renderPickList(){
     for (const gid of p.extras) seatLoc.set(gid, `${tName(t.id)} · !`);
   }
   const seated = [...state.guests.entries()]
-    .filter(([gid,g]) => isSeated(g) && match([gid,g]) &&
+    .filter(([gid,g]) => isSeated(g) && inPlan(gid) && match([gid,g]) &&
       !(pickTarget && g.table === pickTarget.tableId &&
         g.seat === pickTarget.seatIdx))
     .sort((a,b) => a[1].name.localeCompare(b[1].name));
@@ -1959,7 +2258,7 @@ function renderPickList(){
     box.appendChild(b);
   };
   if (!un.length && !seated.length){
-    box.innerHTML = `<p class="emptymsg">${state.guests.size
+    box.innerHTML = `<p class="emptymsg">${planGuestEntries().length
       ? "No matching guests." : "No guests on the list yet."}</p>`;
     return;
   }
@@ -2026,7 +2325,7 @@ if (window.visualViewport){
 /* named actions so the mobile menu can share the header buttons' handlers */
 function resetFlow(){
   if (!editable) return;
-  const seatedN = [...state.guests.values()].filter(g => isSeated(g)).length;
+  const seatedN = planGuestEntries().filter(([,g]) => isSeated(g)).length;
   if (!seatedN){ toast("Nobody is seated - nothing to reset."); return; }
   toast(`Return all ${seatedN} seated guests to the unassigned list?`,
     "Yes, reset seating", doReset);
@@ -2062,7 +2361,7 @@ function opDeleteMany(ids){
 }
 function renderDelList(){
   const q = $("delSearch").value.trim().toLowerCase();
-  const list = [...state.guests.entries()]
+  const list = planGuestEntries()
     .filter(([,g]) => !q || g.name.toLowerCase().includes(q))
     .sort((a,b) => a[1].name.localeCompare(b[1].name));
   $("delList").innerHTML = list.length ? "" : `<p class="emptymsg">No guests.</p>`;
@@ -2638,7 +2937,7 @@ async function doReset(){
   catch(_){ toast("Couldn't save the safety version - reset cancelled."); return; }
   const patches = [];
   for (const [gid, g] of state.guests)
-    if (g.table) patches.push(guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null}));
+    if (g.table && inPlan(gid)) patches.push(guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null}));
   if (commit(patches))
     toast("All seating cleared - everyone is back on the guest list. Undo with ↶.");
 }
@@ -2931,6 +3230,7 @@ setEditable(false);
 /* show the last-known plan from this device IMMEDIATELY - works with no
    signal - then reconcile with the server in the background */
 loadLocalState();
+applyActivePlanLayout();   /* point the layout at the saved active plan before first paint */
 render();
 renderIconPick();
 /* re-queue any edits that were still unsent when the tab last closed */
