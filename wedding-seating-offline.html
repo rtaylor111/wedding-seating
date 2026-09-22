@@ -445,6 +445,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   .planrow.cur{border-color:var(--gold);background:var(--gold-soft);}
   .planrow .badge{margin-left:auto;font-size:11px;color:var(--muted);}
   .planrow .tick{color:var(--gold);font-weight:700;}
+  .chiprow{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}
+  .planchip{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;
+    padding:7px 12px;font:600 13px Karla,sans-serif;cursor:pointer;display:flex;
+    flex-direction:column;align-items:flex-start;line-height:1.3;text-align:left;}
+  .planchip small{font-weight:400;font-size:11px;color:var(--muted);margin-top:1px;}
+  .planchip.on{border-color:var(--gold);background:var(--gold-soft);}
+  .planchip.on small{color:var(--bronze);}
+  .planchip:not(.on):hover{border-color:var(--gold);}
   .hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .savestate{font-size:12.5px;color:var(--muted);}
   .savestate.bad{color:var(--danger);font-weight:700;}
@@ -1018,15 +1026,16 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
       </div>
       <hr style="border:none;border-top:1px solid var(--line);margin:12px 0 10px">
       <h2 style="font-size:15px;margin:0 0 8px">New plan</h2>
-      <input type="text" id="newPlanName" placeholder="Plan name (e.g. Bridal party layout)"
-        maxlength="40" style="width:100%;box-sizing:border-box;margin-bottom:9px">
-      <label class="planopt"><input type="radio" name="newPlanLayout" value="standard" checked>
-        <span>Standard layout (single bridal table)</span></label>
-      <label class="planopt"><input type="radio" name="newPlanLayout" value="bridalDouble">
-        <span>Bridal variant (two joined bridal tables)</span></label>
-      <label class="planlab" for="newPlanCopy">Copy guests from</label>
-      <select id="newPlanCopy" style="width:100%;box-sizing:border-box;margin-bottom:11px"></select>
-      <button class="addbtn" id="newPlanGo">Create plan</button>
+      <input type="text" id="newPlanName" placeholder="Plan name (e.g. Long table layout)"
+        maxlength="40" style="width:100%;box-sizing:border-box;margin-bottom:11px">
+      <div class="planlab">Table layout</div>
+      <div class="chiprow" id="newPlanLayout">
+        <button type="button" class="planchip on" data-layout="standard">Standard<small>single bridal table</small></button>
+        <button type="button" class="planchip" data-layout="bridalDouble">Bridal variant<small>two joined bridal tables</small></button>
+      </div>
+      <div class="planlab">Copy seating from</div>
+      <div class="chiprow" id="newPlanCopy"></div>
+      <button class="addbtn" id="newPlanGo" style="margin-top:12px">Create plan</button>
     </div>
   </div>
 </div>
@@ -1169,24 +1178,44 @@ try{ planRot = ([0,90,180,270].includes(+localStorage.getItem("wsPlanRot")))
   ? +localStorage.getItem("wsPlanRot") : 0; }catch(_){}
 
 /* ============ multi-plan ============
-   Several named seating plans coexist in the SAME shared store, told apart by a
-   plan tag baked into each guest/table key. The ORIGINAL plan is "main" and its
-   keys stay UNTAGGED (existing data is never rewritten); every other plan's keys
-   are `<planId>~<localId>`. The LIST of plans lives in settings.plans (shared,
-   so both devices see the same set); which plan you are VIEWING is a local,
-   per-device choice (like the zoom/rotation), so switching on one device never
-   moves another. No server/Code.gs change: the backend just stores more keys. */
-const PLAN_SEP = "~";
+   ONE constant guest list is shared by every plan; a "plan" only decides WHERE
+   each person sits. The original/current plan is "main" and its seating stays on
+   the guest records exactly as before (no migration). Every OTHER plan stores
+   just an allocation layer - a small map guestId -> {table,seat,seatedAt} - held
+   in settings under "alloc:<planId>". Tables carry a hidden id; table NAMES are
+   matched only when copying seating between layouts. The plan LIST (names +
+   layout) is shared (settings.plans); which plan you are VIEWING is a local,
+   per-device choice (like zoom/rotation), so switching on one device never moves
+   another. No server/Code.gs change: allocations and the plan list are ordinary
+   settings entries, synced by the existing engine. */
 const MAIN_PLAN = "main";
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
+const ALLOC_PREFIX = "alloc:";
 const DEFAULT_MAIN = {name:"Seating plan", layout:"standard"};
 let activePlan = MAIN_PLAN;
 try{ activePlan = localStorage.getItem("wsActivePlan") || MAIN_PLAN; }catch(_){}
-const planTag = key => { const i = String(key).indexOf(PLAN_SEP); return i < 0 ? MAIN_PLAN : String(key).slice(0,i); };
-const planKey = (planId, localId) => planId === MAIN_PLAN ? localId : planId + PLAN_SEP + localId;
+/* per-plan TABLE config (seat counts / renamed tables): main untagged as before,
+   other plans keyed <planId>~<tableId> so each plan can size its own tables */
+const planKey = (planId, localId) => planId === MAIN_PLAN ? localId : planId + "~" + localId;
 const cfgKey = tableId => planKey(activePlan, tableId);
-const inPlan = key => planTag(key) === activePlan;
-const planGuestEntries = () => [...state.guests.entries()].filter(([k]) => inPlan(k));
+/* a plan's allocation map (null for main - main's seating lives on the guests) */
+const allocMapOf = planId => planId === MAIN_PLAN ? null : (state.settings[ALLOC_PREFIX + planId] || null);
+/* the active plan's allocation for ONE guest: from the guest record on main,
+   from the plan's alloc map on any other plan */
+function A(gid){
+  if (activePlan === MAIN_PLAN){
+    const g = state.guests.get(gid);
+    return g ? {table:g.table, seat:g.seat, seatedAt:g.seatedAt} : {table:null,seat:null,seatedAt:null};
+  }
+  const a = (allocMapOf(activePlan) || {})[gid];
+  return a ? {table:a.table??null, seat:Number.isInteger(a.seat)?a.seat:null, seatedAt:a.seatedAt??null}
+           : {table:null, seat:null, seatedAt:null};
+}
+const tableOf = gid => A(gid).table;
+const seatOf  = gid => A(gid).seat;
+/* seated only if the guest's table IN THIS PLAN still exists in the layout (a
+   table later removed from the layout counts as unseated - the old phantom fix) */
+const isSeated = gid => { const t = tableOf(gid); return !!(t && TABLE_BY_ID[t]); };
 /* effective plan list: always includes "main" even if settings.plans is absent
    or was written without it (main is the anchor for the untagged data) */
 function planMeta(){
@@ -1240,17 +1269,13 @@ function tSeats(id){
   return Math.max(1, Math.min(t.maxSeats, n));
 }
 const totalSeats = () => TABLES.reduce((s,t) => s+tSeats(t.id), 0);
-/* A guest is "seated" only if their table still EXISTS in the current layout.
-   A guest left on a table that was later removed (e.g. a retired "B2") counts
-   as unseated for every view - but their stored table is preserved (see adopt),
-   so a later seat/delete still matches the server precondition. Without this
-   they became a frozen phantom: invisible, un-seatable and un-deletable. */
-const isSeated = g => !!(g && g.table && TABLE_BY_ID[g.table]);
+/* the guest LIST is the same for every plan; only WHERE each person sits differs
+   (resolved through A()/tableOf/isSeated for the active plan) */
 const guestsOf = id => [...state.guests.entries()]
-  .filter(([gid,g]) => g.table === id && inPlan(gid))
-  .sort((a,b) => (a[1].seatedAt||0)-(b[1].seatedAt||0) || (a[0]<b[0]?-1:1));
+  .filter(([gid]) => tableOf(gid) === id)
+  .sort((a,b) => ((A(a[0]).seatedAt||0)-(A(b[0]).seatedAt||0)) || (a[0]<b[0]?-1:1));
 const unseated = () => [...state.guests.entries()]
-  .filter(([gid,g]) => !isSeated(g) && inPlan(gid))
+  .filter(([gid]) => !isSeated(gid))
   .sort((a,b) => a[1].name.localeCompare(b[1].name));
 
 function normName(s){ return String(s).trim().replace(/\s+/g," "); }
@@ -1274,9 +1299,10 @@ function famColor(name){
 function placement(tableId){
   const n = tSeats(tableId);
   const slots = new Array(n).fill(null), extras = [], pending = [];
-  for (const [gid,g] of guestsOf(tableId)){
-    if (Number.isInteger(g.seat) && g.seat >= 0 && g.seat < n && slots[g.seat] === null)
-      slots[g.seat] = gid;
+  for (const [gid] of guestsOf(tableId)){
+    const s = seatOf(gid);
+    if (Number.isInteger(s) && s >= 0 && s < n && slots[s] === null)
+      slots[s] = gid;
     else pending.push(gid);
   }
   for (const gid of pending){
@@ -1733,9 +1759,111 @@ const tablePatch = (tableId, nextCfg) => {
 const settingsBody = () => ({seatIcon, colorBySurname: colorFams});
 
 /* ============ operations ============ */
-function opAddGuests(names){
-  return commit(names.map(name =>   /* new guests belong to the active plan */
-    ({kind:"guest", id:planKey(activePlan, newId()), before:null, after:{name, table:null, seat:null, seatedAt:null}})));
+function opAddGuests(names){   /* one shared guest list - a new guest is unseated in every plan */
+  return commit(names.map(name =>
+    ({kind:"guest", id:newId(), before:null, after:{name, table:null, seat:null, seatedAt:null}})));
+}
+
+/* Turn a set of seating changes for the ACTIVE plan into patches. On MAIN the
+   seating lives on the guest records (one patch each, per-guest conflict as
+   before). On any other plan it is one alloc-map settings patch. Changes are
+   {id, table, seat, seatedAt}; table == null means unseat. */
+function allocPatches(changes){
+  if (!changes.length) return [];
+  if (activePlan === MAIN_PLAN){
+    return changes.map(c => {
+      const g = state.guests.get(c.id);
+      return guestPatch(c.id, {name: g ? g.name : "",
+        table: c.table ?? null,
+        seat:  c.table != null ? c.seat : null,
+        seatedAt: c.table != null ? c.seatedAt : null});
+    });
+  }
+  const key = ALLOC_PREFIX + activePlan;
+  const cur = state.settings[key] || null;
+  const next = cur ? {...cur} : {};
+  for (const c of changes){
+    if (c.table == null) delete next[c.id];
+    else next[c.id] = {table:c.table, seat:c.seat, seatedAt:c.seatedAt};
+  }
+  return [{kind:"settings", id:key,
+    before: cur ? JSON.parse(JSON.stringify(cur)) : null,
+    after: Object.keys(next).length ? next : null}];
+}
+/* deleting a PERSON removes them from the shared list AND from every plan's
+   allocation, so they can't linger seated in a variant */
+function deletePersonPatches(ids){
+  const patches = ids.filter(id => state.guests.has(id)).map(id => guestPatch(id, null));
+  for (const pid of planMeta().order){
+    if (pid === MAIN_PLAN) continue;
+    const key = ALLOC_PREFIX + pid, cur = state.settings[key];
+    if (!cur) continue;
+    const next = {...cur}; let changed = false;
+    for (const id of ids) if (id in next){ delete next[id]; changed = true; }
+    if (changed) patches.push({kind:"settings", id:key,
+      before: JSON.parse(JSON.stringify(cur)), after: Object.keys(next).length ? next : null});
+  }
+  return patches;
+}
+/* seated count for ANY plan (for the plan-switcher badges) */
+function seatedInPlan(id){
+  const layout = LAYOUTS[planInfo(id).layout] || LAYOUTS.standard;
+  const has = Object.fromEntries(layout.map(t => [t.id, 1]));
+  let n = 0;
+  if (id === MAIN_PLAN){
+    for (const g of state.guests.values()) if (g.table && has[g.table]) n++;
+  } else {
+    const blob = state.settings[ALLOC_PREFIX + id] || {};
+    for (const k in blob){ const a = blob[k]; if (a && a.table && has[a.table] && state.guests.has(k)) n++; }
+  }
+  return n;
+}
+/* ---- one-time cleanup of the earlier TAGGED model ----
+   An earlier version stored each non-main plan's guests as duplicate tagged
+   records (`<planId>~<localId>`), doubling the list. This folds every tagged
+   plan's seating into the new alloc-map format (matched to the shared person by
+   name; a genuinely new name becomes a new shared person so nobody is lost) and
+   deletes the duplicate records. Pure: returns the patches, commits nothing. */
+function buildTaggedMigration(){
+  const tagged = [...state.guests.entries()].filter(([k]) => k.includes("~"));
+  if (!tagged.length) return {patches:[], taggedCount:0, folded:0, created:0};
+  const byName = {};
+  for (const [k,g] of state.guests) if (!k.includes("~")) byName[g.name.trim().toLowerCase()] = k;
+  const m = planMeta();
+  const blobs = {}, created = [], delPatches = [];
+  let folded = 0;
+  for (const [k,g] of tagged){
+    delPatches.push(guestPatch(k, null));
+    const nm = g.name.trim().toLowerCase();
+    let personId = byName[nm];
+    if (!personId){                     /* a name only in a variant -> keep the person */
+      personId = newId(); byName[nm] = personId;
+      created.push({kind:"guest", id:personId, before:null,
+        after:{name:g.name, table:null, seat:null, seatedAt:null}});
+    }
+    const pid = k.slice(0, k.indexOf("~"));
+    if (pid !== MAIN_PLAN && m.byId[pid] && g.table){
+      (blobs[pid] = blobs[pid] || {})[personId] = {table:g.table, seat:g.seat, seatedAt:g.seatedAt};
+      folded++;
+    }
+  }
+  const patches = [...created];
+  for (const pid in blobs){
+    const key = ALLOC_PREFIX + pid, cur = state.settings[key] || null;
+    patches.push({kind:"settings", id:key,
+      before: cur ? JSON.parse(JSON.stringify(cur)) : null,
+      after: cur ? {...cur, ...blobs[pid]} : blobs[pid]});
+  }
+  patches.push(...delPatches);
+  return {patches, taggedCount:tagged.length, folded, created:created.length};
+}
+function migrateTaggedPlans(){
+  if (!requireEdit()) return false;
+  const b = buildTaggedMigration();
+  if (!b.patches.length){ toast("Nothing to tidy - the guest list is already clean."); return false; }
+  if (commit(b.patches))
+    toast(`Tidied up: removed ${b.taggedCount} duplicate records${b.created?`, kept ${b.created} guest${b.created>1?"s":""} found only in a plan`:""}. Undo with ↶ if needed.`);
+  return true;
 }
 
 /* ---- plan create / rename / delete / copy ---- */
@@ -1760,6 +1888,10 @@ function buildPlanCopy(sourceId, targetId, targetLayoutKey){
   const srcLayout = LAYOUTS[(m.byId[sourceId]||DEFAULT_MAIN).layout] || LAYOUTS.standard;
   const tgtLayout = LAYOUTS[targetLayoutKey] || LAYOUTS.standard;
   const srcById = Object.fromEntries(srcLayout.map(t=>[t.id,t]));
+  /* the source plan's allocation for one guest (guest record on main, alloc map otherwise) */
+  const srcAlloc = sourceId === MAIN_PLAN
+    ? (gid => { const g = state.guests.get(gid); return {table:g.table, seat:g.seat}; })
+    : (gid => (state.settings[ALLOC_PREFIX+sourceId]||{})[gid] || {table:null, seat:null});
   const sName = tid => { const c = state.tableCfg.get(planKey(sourceId,tid));
     return (c && c.name) || (srcById[tid] ? srcById[tid].def : tid); };
   const sSeats = tid => { const t = srcById[tid]; if (!t) return 0;
@@ -1778,28 +1910,28 @@ function buildPlanCopy(sourceId, targetId, targetLayoutKey){
     if (!byName.has(t.def)) byName.set(t.def, []);
     byName.get(t.def).push(rec);
   }
-  let seatedAt = Date.now(), unmatched = 0;
-  const place = (g, table, seat) =>
-    patches.push({kind:"guest", id: planKey(targetId, newId()), before:null,
-      after:{name:g.name, table, seat, seatedAt: table ? seatedAt++ : null}});
-  const src = [...state.guests.entries()].filter(([k]) => planTag(k) === sourceId);
-  const seated = [], loose = [];
-  for (const [,g] of src) (g.table && srcById[g.table] ? seated : loose).push(g);
-  seated.sort((a,b) => (a.table<b.table?-1:a.table>b.table?1:0) || ((a.seat??0)-(b.seat??0)));
-  for (const g of seated){
-    const recs = byName.get(sName(g.table));
-    if (!recs){ place(g, null, null); unmatched++; continue; }
-    let done = false;
-    const pref = Number.isInteger(g.seat) ? g.seat : -1;
-    if (pref >= 0) for (const r of recs)
-      if (pref < r.slots.length && !r.slots[pref]){ r.slots[pref]=true; place(g, r.t.id, pref); done=true; break; }
-    if (!done) for (const r of recs){
-      const fi = r.slots.indexOf(false);
-      if (fi >= 0){ r.slots[fi]=true; place(g, r.t.id, fi); done=true; break; } }
-    if (!done){ place(g, null, null); unmatched++; }   /* all same-name tables full */
+  /* the guest list is shared; copying builds only the target's allocation map */
+  const blob = {}; let seatedAt = Date.now(), copied = 0, unmatched = 0;
+  const seated = [];
+  for (const [gid] of state.guests){
+    const a = srcAlloc(gid);
+    if (a && a.table && srcById[a.table]) seated.push({gid, table:a.table, seat:a.seat});
   }
-  for (const g of loose) place(g, null, null);
-  return {patches, copied: src.length, unmatched};
+  seated.sort((x,y) => (x.table<y.table?-1:x.table>y.table?1:0) || ((x.seat??0)-(y.seat??0)));
+  for (const s of seated){
+    copied++;
+    const recs = byName.get(sName(s.table));
+    if (!recs){ unmatched++; continue; }   /* no target table of that name -> unseated */
+    let done = false; const pref = Number.isInteger(s.seat) ? s.seat : -1;
+    if (pref >= 0) for (const r of recs)
+      if (pref < r.slots.length && !r.slots[pref]){ r.slots[pref]=true; blob[s.gid]={table:r.t.id, seat:pref, seatedAt:seatedAt++}; done=true; break; }
+    if (!done) for (const r of recs){ const fi = r.slots.indexOf(false);
+      if (fi >= 0){ r.slots[fi]=true; blob[s.gid]={table:r.t.id, seat:fi, seatedAt:seatedAt++}; done=true; break; } }
+    if (!done) unmatched++;   /* all same-name tables full -> unseated */
+  }
+  if (Object.keys(blob).length)
+    patches.push({kind:"settings", id: ALLOC_PREFIX+targetId, before:null, after:blob});
+  return {patches, copied, unmatched};
 }
 function opNewPlan(name, layoutKey, copyFromId){
   if (!requireEdit()) return false;
@@ -1813,7 +1945,7 @@ function opNewPlan(name, layoutKey, copyFromId){
   if (copyFromId && m.byId[copyFromId]){ rep = buildPlanCopy(copyFromId, id, layout); patches.push(...rep.patches); }
   if (!commit(patches)) return false;
   setActivePlan(id);
-  if (rep) toast(`Created "${nm}" - copied ${rep.copied} guest${rep.copied===1?"":"s"} from "${planInfo(copyFromId).name}"` +
+  if (rep) toast(`Created "${nm}" - seated ${rep.copied - rep.unmatched} of ${rep.copied} from "${planInfo(copyFromId).name}"` +
     (rep.unmatched ? `; ${rep.unmatched} had no matching table and are unseated.` : "."));
   else toast(`Created "${nm}".`);
   return true;
@@ -1831,8 +1963,11 @@ function opDeletePlan(id){
   const m = planMeta();
   if (id === MAIN_PLAN || !m.byId[id] || m.order.length <= 1) return false;
   const patches = [];
-  for (const [k,g] of state.guests) if (planTag(k) === id) patches.push(guestPatch(k, null));
-  for (const [k,c] of state.tableCfg) if (planTag(k) === id) patches.push({kind:"table", id:k, before:{...c}, after:null});
+  /* drop this plan's allocation layer and its own table config (guests are shared, so untouched) */
+  if (state.settings[ALLOC_PREFIX+id])
+    patches.push({kind:"settings", id:ALLOC_PREFIX+id,
+      before: JSON.parse(JSON.stringify(state.settings[ALLOC_PREFIX+id])), after:null});
+  for (const [k,c] of state.tableCfg) if (k.startsWith(id+"~")) patches.push({kind:"table", id:k, before:{...c}, after:null});
   const byId = {...m.byId}; delete byId[id];
   patches.push(plansSettingsPatch({order: m.order.filter(x=>x!==id), byId}));
   if (!commit(patches)) return false;
@@ -1841,55 +1976,51 @@ function opDeletePlan(id){
   return true;
 }
 function opSeatAt(gid, tableId, seatIdx){
-  const g = state.guests.get(gid);
-  if (!g || !TABLE_BY_ID[tableId]) return;
+  if (!state.guests.has(gid) || !TABLE_BY_ID[tableId]) return;
   const p = placement(tableId);
   if (seatIdx < 0 || seatIdx >= p.n) return;
   const occupant = p.slots[seatIdx];
   if (occupant === gid) return;
-  const prev = {table:g.table, seat:g.seat};
-  const patches = [guestPatch(gid, {name:g.name, table:tableId, seat:seatIdx, seatedAt:Date.now()})];
+  const prev = A(gid);   /* the mover's current seat IN THIS PLAN */
+  const now = Date.now();
+  const changes = [{id:gid, table:tableId, seat:seatIdx, seatedAt:now}];
   if (occupant){
-    const o = state.guests.get(occupant);
-    if (prev.table){
-      patches.push(guestPatch(occupant,
-        {name:o.name, table:prev.table, seat:prev.seat, seatedAt:Date.now()}));
-      toast(`Swapped: ${o.name} moved to ${tName(prev.table)}.`);
+    if (prev.table && TABLE_BY_ID[prev.table]){
+      changes.push({id:occupant, table:prev.table, seat:prev.seat, seatedAt:now});
+      toast(`Swapped: ${state.guests.get(occupant).name} moved to ${tName(prev.table)}.`);
     } else {
-      patches.push(guestPatch(occupant, {name:o.name, table:null, seat:null, seatedAt:null}));
-      toast(`${o.name} is now unseated.`);
+      changes.push({id:occupant, table:null});
+      toast(`${state.guests.get(occupant).name} is now unseated.`);
     }
   }
-  commit(patches);
+  commit(allocPatches(changes));
 }
 function opSeatFirstFree(gid, tableId){
-  const g = state.guests.get(gid);
-  if (!g || g.table === tableId) return;
+  if (!state.guests.has(gid) || tableOf(gid) === tableId) return;
   const p = placement(tableId);
   const free = p.slots.indexOf(null);
   if (free < 0){ toast(`${tName(tableId)} is full (${p.n} seats).`); return; }
-  commit([guestPatch(gid, {name:g.name, table:tableId, seat:free, seatedAt:Date.now()})]);
+  commit(allocPatches([{id:gid, table:tableId, seat:free, seatedAt:Date.now()}]));
 }
 /* move a whole selected group to a table, filling its free seats in one
    undoable batch; anyone who doesn't fit is reported, not force-seated */
 function opMoveGroup(ids, tableId){
   const t = TABLE_BY_ID[tableId];
   if (!t) return;
-  const ids2 = [...ids].filter(id => state.guests.get(id) && state.guests.get(id).table !== tableId);
+  const ids2 = [...ids].filter(id => state.guests.has(id) && tableOf(id) !== tableId);
   if (!ids2.length){ toast("Those guests are already at that table."); return; }
   const taken = placement(tableId).slots.map(x => x !== null);
-  const patches = [], overflow = [];
+  const changes = [], overflow = [];
   let base = Date.now();
   for (const id of ids2){
     const free = taken.indexOf(false);
     if (free < 0){ overflow.push(id); continue; }
     taken[free] = true;
-    const g = state.guests.get(id);
-    patches.push(guestPatch(id, {name:g.name, table:tableId, seat:free, seatedAt:base++}));
+    changes.push({id, table:tableId, seat:free, seatedAt:base++});
   }
-  if (!patches.length){ toast(`${tName(tableId)} has no free seats.`); return; }
-  if (commit(patches)){
-    toast(`Moved ${patches.length} to ${tName(tableId)}.` +
+  if (!changes.length){ toast(`${tName(tableId)} has no free seats.`); return; }
+  if (commit(allocPatches(changes))){
+    toast(`Moved ${changes.length} to ${tName(tableId)}.` +
       (overflow.length ? ` ${overflow.length} didn't fit - table full.` : ""));
     clearSelection();
   }
@@ -1920,50 +2051,56 @@ $("selBtn").onclick = () => {
 };
 $("selClear").onclick = () => clearSelection();
 function opUnseat(gid){
-  const g = state.guests.get(gid);
-  if (!g || !g.table) return;
-  commit([guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null})]);
+  if (!isSeated(gid)) return;
+  commit(allocPatches([{id:gid, table:null}]));
 }
 function opDelete(gid){
-  if (state.guests.has(gid)) commit([guestPatch(gid, null)]);
+  const patches = deletePersonPatches([gid]);
+  if (patches.length) commit(patches);
 }
 function opRename(tableId, name){
   commit([tablePatch(tableId, {name:normName(name)})]);
 }
-/* plan the seat-count change for ONE table; returns patches or null (blocked) */
+/* plan the seat-count change for ONE table. Returns null (blocked), or
+   {tablePatch, changes}: the table-config patch plus the raw allocation changes
+   from any reseat. Callers assemble the alloc patch (one per plan) themselves,
+   so a bulk change never emits two alloc-map patches for the same plan. */
 function planSeats(tableId, n){
   const t = TABLE_BY_ID[tableId];
   n = Math.max(1, Math.min(t.maxSeats, n));
-  if (n === tSeats(tableId)) return [];
+  if (n === tSeats(tableId)) return {tablePatch:null, changes:[]};
   if (n < occOf(tableId)) return null;
-  const patches = [tablePatch(tableId, {seats:n})];
   const p = placement(tableId);
   const occupants = [...p.slots.filter(Boolean), ...p.extras];
   const taken = new Array(n).fill(false), kept = new Set();
   for (const gid of occupants){
-    const s = state.guests.get(gid).seat;
+    const s = seatOf(gid);
     if (Number.isInteger(s) && s >= 0 && s < n && !taken[s]){ taken[s] = true; kept.add(gid); }
   }
+  const changes = [];
   for (const gid of occupants){
     if (kept.has(gid)) continue;
     const free = taken.indexOf(false);
     if (free < 0) break;
     taken[free] = true;
-    const g = state.guests.get(gid);
-    patches.push(guestPatch(gid, {name:g.name, table:tableId, seat:free, seatedAt:g.seatedAt}));
+    changes.push({id:gid, table:tableId, seat:free, seatedAt:A(gid).seatedAt || Date.now()});
   }
-  return patches;
+  return {tablePatch: tablePatch(tableId, {seats:n}), changes};
 }
 function opSetSeats(tableId, n){
   const t = TABLE_BY_ID[tableId];
   if (n > t.maxSeats){ toast(`${tName(tableId)} is at its maximum (${t.maxSeats} seats).`); return; }
-  const patches = planSeats(tableId, n);
-  if (patches === null){
+  const plan = planSeats(tableId, n);
+  if (plan === null){
     toast(`${tName(tableId)} has ${occOf(tableId)} guests seated - unseat someone first.`); return;
   }
-  commit(patches);
+  const patches = [];
+  if (plan.tablePatch) patches.push(plan.tablePatch);
+  patches.push(...allocPatches(plan.changes));
+  if (patches.length) commit(patches);
 }
-/* the global control: every guest table to n seats, ONE undoable batch */
+/* the global control: every guest table to n seats, ONE undoable batch with a
+   SINGLE allocation patch (all reseats accumulated) */
 function opSetSeatsAll(n){
   n = Math.max(1, Math.min(14, n));
   const blocked = GUEST_TABLES.filter(t => occOf(t.id) > n);
@@ -1973,11 +2110,14 @@ function opSetSeatsAll(n){
       `${blocked.length>1?"have":"has"} more guests than that. Unseat someone first.`);
     return;
   }
-  const patches = [];
+  const tablePatches = [], allChanges = [];
   for (const t of GUEST_TABLES){
-    const p = planSeats(t.id, n);
-    if (p && p.length) patches.push(...p);
+    const plan = planSeats(t.id, n);
+    if (!plan) continue;
+    if (plan.tablePatch) tablePatches.push(plan.tablePatch);
+    allChanges.push(...plan.changes);
   }
+  const patches = [...tablePatches, ...allocPatches(allChanges)];
   if (!patches.length){ toast(`All guest tables are already on ${n} seats.`); return; }
   if (commit(patches)) toast(`All guest tables set to ${n} seats.`);
 }
@@ -2003,7 +2143,7 @@ function opToggleFams(){
     after:{...settingsBody(), colorBySurname: turningOn}}]);
   if (!done) return;
   if (turningOn){
-    const set = new Set(planGuestEntries().map(([,g]) => surnameOf(g.name)).filter(Boolean));
+    const set = new Set([...state.guests.values()].map(g => surnameOf(g.name)).filter(Boolean));
     toast(set.size ? `Coloured ${set.size} surname${set.size>1?"s":""}.` : "No guests to colour yet.");
   } else toast("Family colours off.");
 }
@@ -2014,7 +2154,7 @@ function addNames(raw){
   let names = raw.map(normName).filter(Boolean);
   if (names.length && HEADER_RE.test(names[0])) names = names.slice(1);
   if (!names.length){ toast("No names found."); return; }
-  const existing = new Set(planGuestEntries().map(([,g])=>g.name.toLowerCase()));
+  const existing = new Set([...state.guests.values()].map(g=>g.name.toLowerCase()));
   const fresh = [], dupes = [];
   for (const n of names){
     if (existing.has(n.toLowerCase())) dupes.push(n);
@@ -2091,7 +2231,7 @@ function render(){
   renderCounts(); updateUndoUi();
 }
 function renderCounts(){
-  const total = planGuestEntries().length, un = unseated().length;
+  const total = state.guests.size, un = unseated().length;
   $("counts").innerHTML =
     `<b>${total-un}</b> seated &middot; <b>${un}</b> unseated &middot; ` +
     `<b>${total}</b> guests &middot; <b>${totalSeats()}</b> seats`;
@@ -2100,7 +2240,6 @@ function renderCounts(){
 }
 
 /* ---- plan switcher UI ---- */
-const planCountOf = id => { let n = 0; for (const k of state.guests.keys()) if (planTag(k) === id) n++; return n; };
 const planLayoutLabel = k => k === "bridalDouble" ? "Bridal variant" : "Standard";
 function renderPlanBar(){
   const m = planMeta();
@@ -2120,13 +2259,33 @@ function renderPlanSheet(){
     const info = m.byId[id], cur = id === activePlan;
     return `<button class="planrow${cur?" cur":""}" data-plan="${id}">` +
       `${cur?`<span class="tick">&#10003;</span>`:""}<span>${esc(info.name)}</span>` +
-      `<span class="badge">${planLayoutLabel(info.layout)} &middot; ${planCountOf(id)} guests</span></button>`;
+      `<span class="badge">${planLayoutLabel(info.layout)} &middot; ${seatedInPlan(id)} seated</span></button>`;
   }).join("");
-  const sel = $("newPlanCopy");
-  sel.innerHTML = `<option value="">Start empty</option>` +
-    m.order.map(id => `<option value="${id}">${esc(m.byId[id].name)}</option>`).join("");
-  sel.value = activePlan;
+  /* copy-from chips: "Empty" first, then one per plan (current pre-selected) */
+  $("newPlanCopy").innerHTML =
+    `<button type="button" class="planchip" data-copy="">Empty<small>seat everyone yourself</small></button>` +
+    m.order.map(id => `<button type="button" class="planchip${id===activePlan?" on":""}" data-copy="${id}">` +
+      `${esc(m.byId[id].name)}<small>${seatedInPlan(id)} seated</small></button>`).join("");
+  /* reset the layout chips to Standard for a fresh plan */
+  chipSelect($("newPlanLayout"), "layout", "standard");
   $("planDeleteBtn").disabled = (activePlan === MAIN_PLAN) || (m.order.length <= 1);
+}
+/* single-select chip rows: mark one chip .on by its data-<attr> value */
+function chipSelect(row, attr, val){
+  for (const b of row.querySelectorAll(".planchip"))
+    b.classList.toggle("on", b.dataset[attr] === val);
+}
+function chipValue(row, attr){
+  const on = row.querySelector(".planchip.on");
+  return on ? on.dataset[attr] : "";
+}
+/* clicking a chip in a chip-row selects it (single-select) */
+for (const rowId of ["newPlanLayout", "newPlanCopy"]){
+  $(rowId).addEventListener("click", e => {
+    const b = e.target.closest(".planchip");
+    if (!b) return;
+    for (const x of $(rowId).querySelectorAll(".planchip")) x.classList.toggle("on", x === b);
+  });
 }
 $("planPrev").onclick = () => stepPlan(-1);
 $("planNext").onclick = () => stepPlan(1);
@@ -2142,8 +2301,9 @@ $("planList").addEventListener("click", e => {
 });
 $("newPlanGo").onclick = () => {
   if (!editable){ requireEdit(); return; }
-  const layout = (document.querySelector('input[name="newPlanLayout"]:checked')||{}).value || "standard";
-  if (opNewPlan($("newPlanName").value, layout, $("newPlanCopy").value || null)){
+  const layout = chipValue($("newPlanLayout"), "layout") || "standard";
+  const copyFrom = chipValue($("newPlanCopy"), "copy") || null;
+  if (opNewPlan($("newPlanName").value, layout, copyFrom)){
     $("newPlanName").value = "";
     $("planSheet").style.display = "none";
   }
@@ -2156,9 +2316,10 @@ $("planRenameBtn").onclick = () => {
 $("planDeleteBtn").onclick = () => {
   if (!editable){ requireEdit(); return; }
   if (activePlan === MAIN_PLAN){ toast("The first plan can't be deleted."); return; }
-  const info = planInfo(activePlan), n = planCountOf(activePlan);
+  const info = planInfo(activePlan);
   $("planSheet").style.display = "none";
-  toast(`Delete "${info.name}" and its ${n} guest${n===1?"":"s"}?`, "Delete", () => opDeletePlan(activePlan));
+  toast(`Delete the "${info.name}" plan? (Your guest list is kept - only this plan's seating goes.)`,
+    "Delete", () => opDeletePlan(activePlan));
 };
 
 function seatPoints(t, n){
@@ -2482,11 +2643,11 @@ function renderChips(){
     p.slots.forEach((gid,i) => { if (gid) loc.set(gid, `${tName(t.id)} · ${i+1}`); });
     for (const gid of p.extras) loc.set(gid, `${tName(t.id)} · !`);
   }
-  let list = planGuestEntries();
-  const total = list.length;   /* guests in THIS plan (before the view filters) */
-  if (guestView === "unseated") list = list.filter(([,g]) => !isSeated(g));
-  if (guestView === "seated") list = list.filter(([,g]) => isSeated(g));
-  list.sort((a,b) => (isSeated(a[1]) - isSeated(b[1])) || a[1].name.localeCompare(b[1].name));
+  let list = [...state.guests.entries()];
+  const total = list.length;   /* the shared guest list (same for every plan) */
+  if (guestView === "unseated") list = list.filter(([gid]) => !isSeated(gid));
+  if (guestView === "seated") list = list.filter(([gid]) => isSeated(gid));
+  list.sort((a,b) => (isSeated(a[0]) - isSeated(b[0])) || a[1].name.localeCompare(b[1].name));
   if (q) list = list.filter(([,g]) => g.name.toLowerCase().includes(q));
   /* counts live HERE, never in the tabs - tab widths stay constant so the
      row can never crowd (Ross) */
@@ -2513,8 +2674,8 @@ function renderChips(){
           `${c ? ` style="border-left:4px solid ${c}"` : ""}>` +
           `<span class="grip">&#8942;&#8942;</span>` +
           `<span class="nm">${esc(g.name)}</span>` +
-          `<span class="loc">${isSeated(g) ? esc(loc.get(id)||"") : ""}</span>` +
-          (isSeated(g) ? `<button class="del" data-unseat="${id}" title="Unseat">&times;</button>` : "") +
+          `<span class="loc">${isSeated(id) ? esc(loc.get(id)||"") : ""}</span>` +
+          (isSeated(id) ? `<button class="del" data-unseat="${id}" title="Unseat">&times;</button>` : "") +
           `</div>`;
       }).join("")
     : `<p class="emptymsg">${total
@@ -2636,9 +2797,9 @@ function renderPickList(){
     for (const gid of p.extras) seatLoc.set(gid, `${tName(t.id)} · !`);
   }
   const seated = [...state.guests.entries()]
-    .filter(([gid,g]) => isSeated(g) && inPlan(gid) && match([gid,g]) &&
-      !(pickTarget && g.table === pickTarget.tableId &&
-        g.seat === pickTarget.seatIdx))
+    .filter(([gid,g]) => isSeated(gid) && match([gid,g]) &&
+      !(pickTarget && A(gid).table === pickTarget.tableId &&
+        A(gid).seat === pickTarget.seatIdx))
     .sort((a,b) => a[1].name.localeCompare(b[1].name));
   const box = $("pickList");
   box.innerHTML = "";
@@ -2657,7 +2818,7 @@ function renderPickList(){
     box.appendChild(b);
   };
   if (!un.length && !seated.length){
-    box.innerHTML = `<p class="emptymsg">${planGuestEntries().length
+    box.innerHTML = `<p class="emptymsg">${state.guests.size
       ? "No matching guests." : "No guests on the list yet."}</p>`;
     return;
   }
@@ -2724,7 +2885,7 @@ if (window.visualViewport){
 /* named actions so the mobile menu can share the header buttons' handlers */
 function resetFlow(){
   if (!editable) return;
-  const seatedN = planGuestEntries().filter(([,g]) => isSeated(g)).length;
+  const seatedN = [...state.guests.keys()].filter(gid => isSeated(gid)).length;
   if (!seatedN){ toast("Nobody is seated - nothing to reset."); return; }
   toast(`Return all ${seatedN} seated guests to the unassigned list?`,
     "Yes, reset seating", doReset);
@@ -2756,11 +2917,11 @@ $("rosterClose").onclick = () => { delete document.body.dataset.roster; };
    confirmed, undoable) ---- */
 const delSel = new Set();
 function opDeleteMany(ids){
-  return commit(ids.filter(id => state.guests.has(id)).map(id => guestPatch(id, null)));
+  return commit(deletePersonPatches([...ids]));
 }
 function renderDelList(){
   const q = $("delSearch").value.trim().toLowerCase();
-  const list = planGuestEntries()
+  const list = [...state.guests.entries()]
     .filter(([,g]) => !q || g.name.toLowerCase().includes(q))
     .sort((a,b) => a[1].name.localeCompare(b[1].name));
   $("delList").innerHTML = list.length ? "" : `<p class="emptymsg">No guests.</p>`;
@@ -2772,7 +2933,7 @@ function renderDelList(){
     row.innerHTML = `<input type="checkbox" ${delSel.has(gid) ? "checked" : ""}>` +
       (c ? `<span class="fam" style="background:${c}"></span>` : "") +
       `<span>${esc(g.name)}</span>` +
-      `<span class="loc">${isSeated(g) ? esc(tName(g.table)) : ""}</span>`;
+      `<span class="loc">${isSeated(gid) ? esc(tName(A(gid).table)) : ""}</span>`;
     row.querySelector("input").addEventListener("change", ev => {
       ev.target.checked ? delSel.add(gid) : delSel.delete(gid);
       updateDelGo();
@@ -3334,10 +3495,9 @@ async function doReset(){
   saveLocalSnap("Auto - before reset");
   try{ await saveVersion("Auto - before reset"); }
   catch(_){ toast("Couldn't save the safety version - reset cancelled."); return; }
-  const patches = [];
-  for (const [gid, g] of state.guests)
-    if (g.table && inPlan(gid)) patches.push(guestPatch(gid, {name:g.name, table:null, seat:null, seatedAt:null}));
-  if (commit(patches))
+  const changes = [];
+  for (const [gid] of state.guests) if (isSeated(gid)) changes.push({id:gid, table:null});
+  if (commit(allocPatches(changes)))
     toast("All seating cleared - everyone is back on the guest list. Undo with ↶.");
 }
 
@@ -3645,6 +3805,10 @@ try{
   if (pin) await verifyPin(pin, true);
   await flushOutbox();                   /* push anything that survived a reload */
   if (state.guests.size) saveLocalSnap("Auto - on load");
+  /* offer the one-time tidy of the earlier tagged-model duplicates (editor taps it) */
+  if (editable && [...state.guests.keys()].some(k => k.includes("~")))
+    toast("Duplicate guest records from the previous version were found. Tap to tidy them up.",
+      "Tidy up", migrateTaggedPlans);
 })();
 </script>
 </body>
