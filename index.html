@@ -625,6 +625,10 @@
         <button class="hbtn" id="planRenameBtn" style="font-size:13px">Rename current</button>
         <button class="hbtn" id="planDeleteBtn" style="font-size:13px">Delete current</button>
       </div>
+      <div id="copyIntoWrap" style="margin-top:12px">
+        <div class="planlab">Copy seating INTO this plan from &mdash; then edit</div>
+        <div class="chiprow" id="copyIntoRow"></div>
+      </div>
       <hr style="border:none;border-top:1px solid var(--line);margin:12px 0 10px">
       <h2 style="font-size:15px;margin:0 0 8px">New plan</h2>
       <input type="text" id="newPlanName" placeholder="Plan name (e.g. Long table layout)"
@@ -1576,6 +1580,68 @@ function opDeletePlan(id){
   toast("Plan deleted. Undo with ↶.");
   return true;
 }
+/* copy the SEATING from another plan onto the CURRENT (active) plan, matched by
+   table name. Uses the current plan's own table sizes as the capacity (overflow
+   and no-match -> unseated); REPLACES the current plan's seating entirely. */
+function buildCopyInto(sourceId){
+  const target = activePlan;
+  if (sourceId === target) return null;
+  const m = planMeta();
+  const srcLayout = LAYOUTS[(m.byId[sourceId]||DEFAULT_MAIN).layout] || LAYOUTS.standard;
+  const srcById = Object.fromEntries(srcLayout.map(t=>[t.id,t]));
+  const srcAlloc = sourceId === MAIN_PLAN
+    ? (gid => { const g = state.guests.get(gid); return {table:g.table, seat:g.seat}; })
+    : (gid => (state.settings[ALLOC_PREFIX+sourceId]||{})[gid] || {table:null, seat:null});
+  const sName = tid => { const c = state.tableCfg.get(planKey(sourceId,tid));
+    return (c && c.name) || (srcById[tid] ? srcById[tid].def : tid); };
+  const byName = new Map();   /* target tables (active layout), capacity = current sizes */
+  for (const t of TABLES){
+    const rec = {t, slots:new Array(tSeats(t.id)).fill(false)};
+    if (!byName.has(t.def)) byName.set(t.def, []);
+    byName.get(t.def).push(rec);
+  }
+  const seating = {}; let seatedAt = Date.now(), copied = 0, unmatched = 0;
+  const seated = [];
+  for (const [gid] of state.guests){
+    const a = srcAlloc(gid);
+    if (a && a.table && srcById[a.table]) seated.push({gid, table:a.table, seat:a.seat});
+  }
+  seated.sort((x,y) => (x.table<y.table?-1:x.table>y.table?1:0) || ((x.seat??0)-(y.seat??0)));
+  for (const s of seated){
+    copied++;
+    const recs = byName.get(sName(s.table));
+    if (!recs){ unmatched++; continue; }
+    let done = false; const pref = Number.isInteger(s.seat) ? s.seat : -1;
+    if (pref >= 0) for (const r of recs)
+      if (pref < r.slots.length && !r.slots[pref]){ r.slots[pref]=true; seating[s.gid]={table:r.t.id, seat:pref, seatedAt:seatedAt++}; done=true; break; }
+    if (!done) for (const r of recs){ const fi = r.slots.indexOf(false);
+      if (fi >= 0){ r.slots[fi]=true; seating[s.gid]={table:r.t.id, seat:fi, seatedAt:seatedAt++}; done=true; break; } }
+    if (!done) unmatched++;
+  }
+  let patches;
+  if (target === MAIN_PLAN){       /* rewrite the guest records (unseat anyone not in the copy) */
+    patches = [];
+    for (const [gid,g] of state.guests){
+      const d = seating[gid], nt = d ? d.table : null, ns = d ? d.seat : null;
+      if ((g.table??null) !== nt || (g.seat??null) !== ns)
+        patches.push(guestPatch(gid, {name:g.name, table:nt, seat:ns, seatedAt: d ? d.seatedAt : null}));
+    }
+  } else {                         /* replace the whole alloc map for this variant */
+    const key = ALLOC_PREFIX + target, cur = state.settings[key] || null;
+    patches = [{kind:"settings", id:key, before: cur ? JSON.parse(JSON.stringify(cur)) : null,
+      after: Object.keys(seating).length ? seating : null}];
+  }
+  return {patches, copied, unmatched};
+}
+function opCopyInto(sourceId){
+  if (!requireEdit()) return false;
+  const b = buildCopyInto(sourceId);
+  if (!b || !b.patches.length){ toast("Nothing to copy - the seating already matches."); return false; }
+  if (commit(b.patches))
+    toast(`Copied seating from "${planInfo(sourceId).name}" - seated ${b.copied - b.unmatched} of ${b.copied}` +
+      (b.unmatched ? `; ${b.unmatched} didn't fit and are unseated.` : ".") + " Undo with ↶.");
+  return true;
+}
 function opSeatAt(gid, tableId, seatIdx){
   if (!state.guests.has(gid) || !TABLE_BY_ID[tableId]) return;
   const p = placement(tableId);
@@ -1870,6 +1936,12 @@ function renderPlanSheet(){
   /* reset the layout chips to Standard for a fresh plan */
   chipSelect($("newPlanLayout"), "layout", "standard");
   $("planDeleteBtn").disabled = (activePlan === MAIN_PLAN) || (m.order.length <= 1);
+  /* copy-INTO chips: every OTHER plan (nothing to copy from if this is the only plan) */
+  const others = m.order.filter(id => id !== activePlan);
+  $("copyIntoWrap").style.display = others.length ? "" : "none";
+  $("copyIntoRow").innerHTML = others.map(id =>
+    `<button type="button" class="planchip" data-copyinto="${id}">${esc(m.byId[id].name)}` +
+    `<small>${seatedInPlan(id)} seated</small></button>`).join("");
 }
 /* single-select chip rows: mark one chip .on by its data-<attr> value */
 function chipSelect(row, attr, val){
@@ -1899,6 +1971,15 @@ $("planList").addEventListener("click", e => {
   if (!b) return;
   $("planSheet").style.display = "none";
   setActivePlan(b.dataset.plan);
+});
+$("copyIntoRow").addEventListener("click", e => {
+  const b = e.target.closest("[data-copyinto]");
+  if (!b) return;
+  if (!editable){ requireEdit(); return; }
+  const src = b.dataset.copyinto;
+  $("planSheet").style.display = "none";
+  toast(`Copy seating from "${planInfo(src).name}" onto "${planInfo(activePlan).name}"? This replaces its current seating (undoable).`,
+    "Copy", () => opCopyInto(src));
 });
 $("newPlanGo").onclick = () => {
   if (!editable){ requireEdit(); return; }
