@@ -111,6 +111,9 @@
     border-radius:5px;width:22px;height:22px;font:700 13px Karla,sans-serif;cursor:pointer;
     line-height:1;padding:0;}
   .allseats button:hover{border-color:var(--gold);color:var(--ink);}
+  .rsum{font-size:12.5px;color:var(--muted);margin:8px 2px 2px;
+    font-variant-numeric:tabular-nums;}
+  .rsum b{color:var(--ink);font-weight:700;}
   .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;}
   .card.dropcue{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft);}
   .card h3{font-family:Fraunces,Georgia,serif;font-size:15.5px;font-weight:600;margin:0;
@@ -493,6 +496,7 @@
       <button data-allplus title="One seat more everywhere">+</button>
       seats
     </div>
+    <div id="rosterSummary" class="rsum"></div>
     <div id="cards" style="display:flex;flex-direction:column;gap:10px"></div>
   </aside>
 </div>
@@ -701,18 +705,24 @@ try{ planRot = ([0,90,180,270].includes(+localStorage.getItem("wsPlanRot")))
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const tName = id => (state.tableCfg.get(id)||{}).name || TABLE_BY_ID[id].def;
+const tName = id => (state.tableCfg.get(id)||{}).name || (TABLE_BY_ID[id] ? TABLE_BY_ID[id].def : id);
 function tSeats(id){
   const t = TABLE_BY_ID[id], cfg = state.tableCfg.get(id);
   const n = cfg && Number.isFinite(cfg.seats) ? Math.round(cfg.seats) : t.defSeats;
   return Math.max(1, Math.min(t.maxSeats, n));
 }
 const totalSeats = () => TABLES.reduce((s,t) => s+tSeats(t.id), 0);
+/* A guest is "seated" only if their table still EXISTS in the current layout.
+   A guest left on a table that was later removed (e.g. a retired "B2") counts
+   as unseated for every view - but their stored table is preserved (see adopt),
+   so a later seat/delete still matches the server precondition. Without this
+   they became a frozen phantom: invisible, un-seatable and un-deletable. */
+const isSeated = g => !!(g && g.table && TABLE_BY_ID[g.table]);
 const guestsOf = id => [...state.guests.entries()]
   .filter(([,g]) => g.table === id)
   .sort((a,b) => (a[1].seatedAt||0)-(b[1].seatedAt||0) || (a[0]<b[0]?-1:1));
 const unseated = () => [...state.guests.entries()]
-  .filter(([,g]) => !g.table)
+  .filter(([,g]) => !isSeated(g))
   .sort((a,b) => a[1].name.localeCompare(b[1].name));
 
 function normName(s){ return String(s).trim().replace(/\s+/g," "); }
@@ -816,7 +826,7 @@ function adopt(version, s){
   state.guests = new Map(Object.entries(s.guests||{})
     .filter(([id]) => GUEST_ID_RE.test(id))
     .map(([id,b]) => [id, {
-      name:String(b.name??""), table: TABLE_BY_ID[b.table] ? b.table : null,
+      name:String(b.name??""), table: (typeof b.table === "string" && b.table) ? b.table : null,
       seat:Number.isInteger(b.seat)?b.seat:null, seatedAt:b.seatedAt??null}]));
   state.tableCfg = new Map(Object.entries(s.tables||{}).map(([id,c]) => {
     const cfg = {};
@@ -1776,9 +1786,9 @@ function renderChips(){
     for (const gid of p.extras) loc.set(gid, `${tName(t.id)} · !`);
   }
   let list = [...state.guests.entries()];
-  if (guestView === "unseated") list = list.filter(([,g]) => !g.table);
-  if (guestView === "seated") list = list.filter(([,g]) => !!g.table);
-  list.sort((a,b) => (!!a[1].table - !!b[1].table) || a[1].name.localeCompare(b[1].name));
+  if (guestView === "unseated") list = list.filter(([,g]) => !isSeated(g));
+  if (guestView === "seated") list = list.filter(([,g]) => isSeated(g));
+  list.sort((a,b) => (isSeated(a[1]) - isSeated(b[1])) || a[1].name.localeCompare(b[1].name));
   if (q) list = list.filter(([,g]) => g.name.toLowerCase().includes(q));
   /* counts live HERE, never in the tabs - tab widths stay constant so the
      row can never crowd (Ross) */
@@ -1805,8 +1815,8 @@ function renderChips(){
           `${c ? ` style="border-left:4px solid ${c}"` : ""}>` +
           `<span class="grip">&#8942;&#8942;</span>` +
           `<span class="nm">${esc(g.name)}</span>` +
-          `<span class="loc">${g.table ? esc(loc.get(id)||"") : ""}</span>` +
-          (g.table ? `<button class="del" data-unseat="${id}" title="Unseat">&times;</button>` : "") +
+          `<span class="loc">${isSeated(g) ? esc(loc.get(id)||"") : ""}</span>` +
+          (isSeated(g) ? `<button class="del" data-unseat="${id}" title="Unseat">&times;</button>` : "") +
           `</div>`;
       }).join("")
     : `<p class="emptymsg">${state.guests.size
@@ -1815,6 +1825,10 @@ function renderChips(){
 }
 
 function renderRoster(){
+  /* total empty (unassigned) seats across every table in the current layout */
+  const emptySeats = TABLES.reduce((s,t) => s + placement(t.id).slots.filter(x=>!x).length, 0);
+  const rs = $("rosterSummary");
+  if (rs) rs.innerHTML = `<b>${emptySeats}</b> unassigned seat${emptySeats===1?"":"s"}`;
   const fam = name => {
     const c = famColor(name);
     return c ? `<span class="fam" style="background:${c}"></span>` : "";
@@ -1924,7 +1938,7 @@ function renderPickList(){
     for (const gid of p.extras) seatLoc.set(gid, `${tName(t.id)} · !`);
   }
   const seated = [...state.guests.entries()]
-    .filter(([gid,g]) => g.table && match([gid,g]) &&
+    .filter(([gid,g]) => isSeated(g) && match([gid,g]) &&
       !(pickTarget && g.table === pickTarget.tableId &&
         g.seat === pickTarget.seatIdx))
     .sort((a,b) => a[1].name.localeCompare(b[1].name));
@@ -2012,7 +2026,7 @@ if (window.visualViewport){
 /* named actions so the mobile menu can share the header buttons' handlers */
 function resetFlow(){
   if (!editable) return;
-  const seatedN = [...state.guests.values()].filter(g => g.table).length;
+  const seatedN = [...state.guests.values()].filter(g => isSeated(g)).length;
   if (!seatedN){ toast("Nobody is seated - nothing to reset."); return; }
   toast(`Return all ${seatedN} seated guests to the unassigned list?`,
     "Yes, reset seating", doReset);
@@ -2060,7 +2074,7 @@ function renderDelList(){
     row.innerHTML = `<input type="checkbox" ${delSel.has(gid) ? "checked" : ""}>` +
       (c ? `<span class="fam" style="background:${c}"></span>` : "") +
       `<span>${esc(g.name)}</span>` +
-      `<span class="loc">${g.table ? esc(tName(g.table)) : ""}</span>`;
+      `<span class="loc">${isSeated(g) ? esc(tName(g.table)) : ""}</span>`;
     row.querySelector("input").addEventListener("change", ev => {
       ev.target.checked ? delSel.add(gid) : delSel.delete(gid);
       updateDelGo();
@@ -2702,7 +2716,7 @@ async function openVersions(){
 function cleanGuestBody(v){
   if (!v || typeof v !== "object" || !normName(String(v.name ?? ""))) return null;
   return {name: normName(String(v.name)),
-    table: TABLE_BY_ID[v.table] ? v.table : null,
+    table: (typeof v.table === "string" && v.table) ? v.table : null,
     seat: Number.isInteger(v.seat) ? v.seat : null,
     seatedAt: Number.isFinite(v.seatedAt) ? v.seatedAt : null};
 }
