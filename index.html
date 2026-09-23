@@ -3422,11 +3422,29 @@ function exportPdf(){
     doc.setFillColor(245,239,224);
     doc.setDrawColor(217,203,168);
     R(t.x,t.y,t.w,t.h,"FD");
+    /* numbered seat markers, same positions as on screen, so the plan can be
+       read against the roster's "3. Name" lines: gold = taken, white = free */
+    doc.setLineWidth(0.4); doc.setFont("helvetica","bold"); doc.setFontSize(4.2);
+    seatPoints(t, p.n).forEach(([cx,cy], i) => {
+      const taken = !!p.slots[i];
+      doc.setFillColor(...(taken ? [169,132,66] : [255,255,255]));
+      doc.setDrawColor(...(taken ? [169,132,66] : [150,150,146]));
+      doc.circle(ox+cx*s, oy+cy*s, 4.6*s, "FD");
+      doc.setTextColor(...(taken ? [255,255,255] : [120,122,118]));
+      doc.text(String(i+1), ox+cx*s, oy+cy*s, {align:"center", baseline:"middle"});
+    });
+    doc.setLineWidth(1.2);
     doc.setTextColor(35,37,43);
     doc.setFont("helvetica","bold"); doc.setFontSize(7);
     if (t.o === "v1"){
       doc.text(tName(t.id).slice(0,12), ox+(t.x+t.w/2)*s, oy+(t.y+t.h/2)*s,
         {align:"center", angle:90});
+    } else if (t.o === "v"){
+      /* vertical, in the gap between the two seat columns */
+      /* rotated text ignores align:"center" in jsPDF, so centre it by hand */
+      const vt = `${tName(t.id).slice(0,10)}  ${n}/${p.n}`;
+      doc.text(vt, ox+(t.x+t.w/2)*s + 2.5, oy+(t.y+t.h/2)*s + doc.getTextWidth(vt)/2,
+        {angle:90});
     } else {
       doc.text(`${tName(t.id).slice(0,10)}  ${n}/${p.n}`,
         ox+(t.x+t.w/2)*s, oy+(t.y+t.h/2+2)*s, {align:"center"});
